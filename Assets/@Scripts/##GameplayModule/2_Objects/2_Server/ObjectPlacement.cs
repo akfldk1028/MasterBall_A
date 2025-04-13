@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq; // For ToList()
 using UnityEngine;
+// using Unity.Assets.Scripts.Objects; // 네임스페이스 참조는 유지 (ObjectSpawner 사용 안해도 Brick 등 참조 위함)
 
 // 열거형 정의
 public enum SpawnableObjectType
@@ -17,7 +19,7 @@ public class ObjectPlacement : MonoBehaviour
     [SerializeField] private Transform rightBorder;
     [SerializeField] private Transform topBorder;
     
-    [Header("오브젝트 프리팹")] // Resources.Load 대신 SerializeField 사용
+    [Header("오브젝트 프리팹")] // ObjectSpawner 없으므로 직접 참조 유지
     [SerializeField] private GameObject brickPrefab;
     [SerializeField] private GameObject bonusBallPrefab;
     [SerializeField] private GameObject starPrefab;
@@ -25,21 +27,27 @@ public class ObjectPlacement : MonoBehaviour
     [Header("레이아웃 설정")]
     [SerializeField] private int maxBricksPerRow = 7;
     [SerializeField] private float brickSpacing = 0.1f;
-    [SerializeField] private float topOffset = -0.5f; // 음수값: topBorder 아래로
-    [SerializeField] private float moveDownDistance = 0.85f;
+    [SerializeField] private float topOffset = -2.5f; // 첫 행이 최종적으로 위치할 Y 오프셋
+    [SerializeField] private float moveDownDistance = 0.85f; // 한 칸 내려갈 거리
+    [SerializeField] private int numberOfRowsToSpawn = 3;   // 새로 추가: 한 번에 생성할 행 수
+    [SerializeField] private float rowSpacing = 0.8f;       // 새로 추가: 행 간 세로 간격
+    [SerializeField] private float objectScaleMultiplier = 0.7f; // 새로 추가: 오브젝트 크기 배율
+    [SerializeField] private int totalObjectsToSpawn = 50;      // 다시 추가: 생성할 총 오브젝트 수 (랜덤 선택용)
     
-    private float initialY;
+    // 생성 시 Y 오프셋 값을 0으로 변경 (topBorder 위치에서 생성)
+    private float initialSpawnYOffset = 0f; // 생성 시 Y 오프셋 (기존 -2.5f 값에서 변경)
 
     [Header("애니메이션 설정")]
-    [SerializeField] private float movingDownStep = 0.04f; // 원래 MoveDownObjects 값
+    [SerializeField] private float movingDownStep = 0.04f;
     
-    // 현재 활성 오브젝트 목록
-    private List<GameObject> activeObjects = new List<GameObject>();
+    // List<GameObject> 대신 Dictionary 사용
+    private Dictionary<GameObject, bool> activeObjectData = new Dictionary<GameObject, bool>();
     
     
     private void Awake()
     {
-        // 프리팹 참조 확인 (Inspector에서 할당되지 않았을 경우 경고)
+        // Spawner 참조 확인 제거
+        // 프리팹 null 체크는 그대로 유지
         if (brickPrefab == null) Debug.LogError("Brick Prefab이 할당되지 않았습니다!");
         if (bonusBallPrefab == null) Debug.LogError("Bonus Ball Prefab이 할당되지 않았습니다!");
         if (starPrefab == null) Debug.LogError("Star Prefab이 할당되지 않았습니다!");
@@ -59,151 +67,205 @@ public class ObjectPlacement : MonoBehaviour
         }
     }
     
+    // 내부 구조체 또는 클래스로 위치 정보 저장
+    private struct PotentialSpawnInfo
+    {
+        public Vector3 SpawnPosition; 
+        public float TargetY;
+    }
+
     // 오브젝트 배치 메서드
     public void PlaceNewObjectsOnTheScene()
     {
-        // 이전 오브젝트 모두 한 단계 아래로 이동
+        Debug.Log("[ObjectPlacement] Placing new objects (random grid, adjacent).");
         MoveDownAllObjects();
         
-        // topBorder 위치 기준으로 초기 Y 위치 설정
-        initialY = topBorder.position.y + (-2.5f); // topOffset이 음수이므로 결과적으로 빼기가 됨
-        
-        // 사용 가능한 너비 계산
-        float availableWidth = rightBorder.position.x - leftBorder.position.x;
-        
-        // 벽돌 수 결정
-        int numberOfBricks = (CommonVars.level < 10) ? Random.Range(1, 3) : Random.Range(2, 6);
-        numberOfBricks = Mathf.Min(numberOfBricks, maxBricksPerRow);
-        
-        // 벽돌 너비 및 위치 계산
+        // --- 1. 모든 잠재적 스폰 위치 정보 계산 (붙이기 로직 유지) --- 
+        List<PotentialSpawnInfo> potentialSpawns = new List<PotentialSpawnInfo>();
+
+        float baseSpawnY = topBorder.position.y + initialSpawnYOffset;
+        float baseTargetY = topBorder.position.y + topOffset;
         float totalWidth = rightBorder.position.x - leftBorder.position.x;
-        float brickWidth = (totalWidth - (brickSpacing * (maxBricksPerRow - 1))) / maxBricksPerRow;
-
-        // 사용할 위치 선택
-        List<int> positions = new List<int>();
-        for (int i = 0; i < maxBricksPerRow; i++) positions.Add(i);
         
-        // 랜덤하게 섞기
-        for (int i = 0; i < positions.Count; i++)
+        float baseBrickWidth = totalWidth / maxBricksPerRow; 
+        Vector3 objectScale = new Vector3(baseBrickWidth, baseBrickWidth * 0.8f, 1) * objectScaleMultiplier;
+        float actualObjectWidth = objectScale.x;
+        float actualObjectHeight = objectScale.y;
+
+        // --- 실제 배치 가능한 열(Column) 수 계산 --- 
+        int calculatedFitCount = 0;
+        if (actualObjectWidth > 0) // 0으로 나누기 방지
         {
-            int temp = positions[i];
-            int randomIndex = Random.Range(i, positions.Count);
-            positions[i] = positions[randomIndex];
-            positions[randomIndex] = temp;
+            calculatedFitCount = Mathf.FloorToInt(totalWidth / actualObjectWidth);
         }
-        
-        // 선택된 위치에 오브젝트 생성
-        for (int i = 0; i < numberOfBricks; i++)
+        else
         {
-            int posIndex = positions[i];
-            
-            // 왼쪽 모서리부터 시작해서 각 벽돌 위치 계산
-            // 1. 첫 번째 벽돌 왼쪽 모서리 = leftBorder 위치
-            // 2. 이후 벽돌들은 (너비 + 간격)만큼 오른쪽으로 이동
-            float leftEdgeX = leftBorder.position.x + (posIndex * (brickWidth + brickSpacing));
-            
-            // 중심점은 왼쪽 모서리 + 너비의 절반
-            float centerX = leftEdgeX + (brickWidth / 2);
-            
-            Vector3 spawnPosition = new Vector3(centerX, initialY, 0);
-            
-            // --- 오브젝트 타입 결정 및 생성 방식 변경 ---
-            SpawnableObjectType objectType = SpawnableObjectType.Brick; // 기본값
-            int randomType = Random.Range(0, 20); // 0~19 범위
+             Debug.LogWarning("[ObjectPlacement] Calculated actualObjectWidth is zero or negative. Cannot calculate fit count.");
+        }
+        // Inspector 설정(maxBricksPerRow)과 계산된 값 중 작은 값을 최종 사용 -> 계산된 값만 사용하도록 변경
+        int finalColumnCount = calculatedFitCount; // 계산된 값 직접 사용
+        Debug.Log($"[ObjectPlacement] TotalWidth: {totalWidth:F2}, ActualWidth: {actualObjectWidth:F2}, CalculatedFit: {calculatedFitCount}, (MaxPerRow Ignored), FinalCols: {finalColumnCount}");
+        // --- 계산 끝 --- 
 
-            if (randomType == 0) // 1/20 확률 (5%)
-                objectType = SpawnableObjectType.BonusBall;
-            else if (randomType == 1) // 1/20 확률 (5%)
-                objectType = SpawnableObjectType.Star;
+        for (int rowIndex = 0; rowIndex < numberOfRowsToSpawn; rowIndex++)
+        {   
+            float targetY = baseTargetY - (rowIndex * actualObjectHeight);
+            // colIndex 루프 조건을 finalColumnCount 로 변경    
+            for (int colIndex = 0; colIndex < finalColumnCount; colIndex++)
+            {
+                float leftEdgeX = leftBorder.position.x + (colIndex * actualObjectWidth);
+                float centerX = leftEdgeX + (actualObjectWidth / 2);
+                Vector3 spawnPosition = new Vector3(centerX, baseSpawnY, 0);
+                
+                potentialSpawns.Add(new PotentialSpawnInfo { SpawnPosition = spawnPosition, TargetY = targetY });
+            }
+        }
+        Debug.Log($"[ObjectPlacement] Calculated {potentialSpawns.Count} potential spawn slots.");
 
-            // 열거형으로 프리팹 가져오기
+        // --- 2. 스폰 위치 랜덤 셔플 (복원) --- 
+        System.Random rng = new System.Random();
+        int n = potentialSpawns.Count;
+        while (n > 1)
+        {
+            n--;
+            int k = rng.Next(n + 1);
+            PotentialSpawnInfo value = potentialSpawns[k];
+            potentialSpawns[k] = potentialSpawns[n];
+            potentialSpawns[n] = value;
+        }
+
+        // --- 3. 선택된 위치에 오브젝트 생성 (복원) --- 
+        int objectsToSpawnCount = Mathf.Min(totalObjectsToSpawn, potentialSpawns.Count); // 실제 생성 개수 제한
+        Debug.Log($"[ObjectPlacement] Spawning {objectsToSpawnCount} objects randomly (adjacent).");
+
+        for (int i = 0; i < objectsToSpawnCount; i++)
+        {
+            PotentialSpawnInfo spawnInfo = potentialSpawns[i];
+            Vector3 spawnPosition = spawnInfo.SpawnPosition;
+            float targetY = spawnInfo.TargetY;
+
+            // 오브젝트 타입 랜덤 결정
+            SpawnableObjectType objectType = SpawnableObjectType.Brick;
+            int randomType = Random.Range(0, 20); // 확률 조정 필요 시 이 값 변경
+            if (randomType == 0) objectType = SpawnableObjectType.BonusBall;
+            else if (randomType == 1) objectType = SpawnableObjectType.Star;
+
             GameObject prefabToSpawn = GetPrefabForType(objectType);
 
             if (prefabToSpawn != null)
             {
-                // 오브젝트 생성 및 설정
                 GameObject newObject = Instantiate(prefabToSpawn, spawnPosition, Quaternion.identity);
+                newObject.transform.localScale = objectScale;
                 
-                // 정확한 너비로 설정 (중요!)
-                newObject.transform.localScale = new Vector3(brickWidth, brickWidth * 0.8f, 1);
-                
-                // Rigidbody2D 컴포넌트 설정
                 Rigidbody2D rb = newObject.GetComponent<Rigidbody2D>();
                 if (rb == null) rb = newObject.AddComponent<Rigidbody2D>();
                 rb.gravityScale = 0;
                 rb.isKinematic = true;
                 
-                // ObjectData 컴포넌트 추가
-                ObjectData data = newObject.AddComponent<ObjectData>();
-                data.rb = rb;
-                
-                // 첫 행이면 아래로 천천히 이동
-                StartCoroutine(MoveFirstRowDown(newObject, initialY));
-                
-                // 리스트에 추가
-                activeObjects.Add(newObject);
+                if (!activeObjectData.ContainsKey(newObject))
+                {
+                    activeObjectData.Add(newObject, true); // isFirstRow = true
+                }
+                else
+                {
+                    Debug.LogWarning($"[ObjectPlacement] Duplicate GameObject key: {newObject.name}");
+                }
+
+                StartCoroutine(MoveObjectToTargetY(newObject, targetY));
             }
-            // --- 변경 끝 ---
         }
+        // --- 생성 로직 끝 --- 
     }
     
-    // 첫 행을 천천히 아래로 이동시키는 코루틴
-    private IEnumerator MoveFirstRowDown(GameObject obj, float startY)
+    // 코루틴 이름 변경 및 targetY 파라미터 추가
+    private IEnumerator MoveObjectToTargetY(GameObject obj, float targetY)
     {
-        float targetY = initialY; // 인스펙터에서 설정한 최종 위치
         if (obj == null) yield break;
+        float startY = obj.transform.position.y;
+        Debug.Log($"[ObjectPlacement] Starting MoveObjectToTargetY for {obj.name} from {startY} to {targetY}");
+
         Rigidbody2D rb = obj.GetComponent<Rigidbody2D>();
         if (rb == null) yield break;
 
-        // Debug.Log($"Moving from {obj.transform.position.y} to {targetY}");
-
-        while (obj != null && obj.transform.position.y > targetY)
+        // 목표 지점에 도달할 때까지 이동
+        while (obj != null && Mathf.Abs(obj.transform.position.y - targetY) > 0.01f) // 목표 Y에 근접할 때까지
         {
             Vector3 pos = obj.transform.position;
-            pos.y -= movingDownStep * Time.fixedDeltaTime * 50; // 속도 조절 (기존 값과 비슷하게)
-
-            if (pos.y <= targetY)
-                pos.y = targetY;
+            // 목표 지점까지 부드럽게 이동 (Lerp 방식 또는 현재 방식 유지 - 현재 방식 사용)
+            float step = movingDownStep * Time.fixedDeltaTime * 50;
+            pos.y = Mathf.MoveTowards(pos.y, targetY, step);
 
             rb.MovePosition(pos);
-            yield return new WaitForFixedUpdate(); // FixedUpdate 기준으로 대기
+            yield return new WaitForFixedUpdate();
+        }
+
+        // 최종 위치 설정 및 상태 업데이트
+        if (obj != null)
+        {
+            Debug.Log($"[ObjectPlacement] Finished MoveObjectToTargetY for {obj.name} at {targetY}");
+            // 정확한 최종 위치로 설정
+            Vector3 finalPos = obj.transform.position; 
+            finalPos.y = targetY;
+            rb.MovePosition(finalPos);
+
+            if (activeObjectData.ContainsKey(obj))
+            {
+                activeObjectData[obj] = false; // isFirstRow = false
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[ObjectPlacement] Object destroyed during MoveObjectToTargetY.");
         }
     }
     
     // 모든 활성 오브젝트를 한 단계 아래로 이동
     private void MoveDownAllObjects()
     {
-        for (int i = activeObjects.Count - 1; i >= 0; i--)
+        Debug.Log($"[ObjectPlacement] Moving down all {activeObjectData.Count} active objects.");
+
+        List<GameObject> keysToRemove = new List<GameObject>();
+        // Dictionary 복사본 생성 후 순회 (순회 중 삭제 대비)
+        var currentActiveObjects = activeObjectData.ToList(); 
+
+        foreach (KeyValuePair<GameObject, bool> pair in currentActiveObjects)
         {
-            GameObject obj = activeObjects[i];
-            
-            if (obj == null)
+            GameObject obj = pair.Key;
+            bool isFirstRow = pair.Value;
+
+            if (obj == null) // 오브젝트가 파괴된 경우 (예: 다른 스크립트에서)
             {
-                activeObjects.RemoveAt(i);
+                Debug.LogWarning($"[ObjectPlacement] Found destroyed object key in dictionary. Marking for removal.");
+                keysToRemove.Add(obj); // Dictionary에서 제거하도록 표시
                 continue;
             }
-            
-            // 현재 위치에서 아래로 이동
-            float newY = obj.transform.position.y - moveDownDistance;
-            
-            // 화면 밖으로 나갔는지 확인
-            if (newY < -2.3f) // 기존 하드코딩 값
+
+            // --- ObjectData 대신 Dictionary 값 사용 --- 
+            if (isFirstRow)
             {
-                // 벽돌이 바닥에 닿으면 게임 오버
-                if (obj.name.Contains("brick"))
-                {
-                    // 게임 오버 로직
-                    Debug.Log("게임 오버: 벽돌이 바닥에 닿음");
-                }
-                
-                Destroy(obj);
-                activeObjects.RemoveAt(i);
+                continue; // 첫 행 이동 중이면 건너뜀
+            }
+            // --- 변경 끝 ---
+
+            float newY = obj.transform.position.y - moveDownDistance;
+            const float bottomBoundary = -2.3f;
+
+            if (newY < bottomBoundary)
+            {
+                Debug.Log($"[ObjectPlacement] Object {obj.name} reached bottom boundary ({newY}). Destroying and marking for removal.");
+                Destroy(obj); // 오브젝트 파괴
+                keysToRemove.Add(obj); // Dictionary에서 제거하도록 표시
             }
             else
             {
-                // 부드러운 이동 시작
                 StartCoroutine(MoveDown(obj, newY));
             }
+        }
+
+        // 순회가 끝난 후 표시된 키들을 Dictionary에서 제거
+        foreach (GameObject key in keysToRemove)
+        {
+            activeObjectData.Remove(key);
         }
     }
     
@@ -211,7 +273,6 @@ public class ObjectPlacement : MonoBehaviour
     private IEnumerator MoveDown(GameObject obj, float targetY)
     {
         if (obj == null) yield break;
-        
         Rigidbody2D rb = obj.GetComponent<Rigidbody2D>();
         if (rb == null) yield break;
         
@@ -236,25 +297,36 @@ public class ObjectPlacement : MonoBehaviour
     {
         if (leftBorder && rightBorder && topBorder)
         {
-            Gizmos.color = Color.yellow;
-            float initialY = topBorder.position.y + topOffset;
-            float leftBoundary = leftBorder.position.x + (leftBorder.localScale.x / 2);
-            float rightBoundary = rightBorder.position.x - (rightBorder.localScale.x / 2);
-            Gizmos.DrawLine(new Vector3(leftBoundary, initialY, 0), new Vector3(rightBoundary, initialY, 0)); // 초기 스폰 라인
+            float leftBoundary = leftBorder.position.x;
+            float rightBoundary = rightBorder.position.x;
 
+            // --- Gizmo 표시를 위한 크기 계산 (PlaceNewObjectsOnTheScene과 동일 로직) ---
+            float totalWidth = rightBoundary - leftBoundary;
+            int colsToDraw = maxBricksPerRow; // Gizmo는 maxBricksPerRow 기준으로 그림 (실제 배치는 다를 수 있음)
+            float baseBrickWidth = (colsToDraw > 0) ? totalWidth / colsToDraw : totalWidth; // 0 나누기 방지
+            Vector3 gizmoObjectScale = new Vector3(baseBrickWidth, baseBrickWidth * 0.8f, 1) * objectScaleMultiplier;
+            float actualObjectHeight = gizmoObjectScale.y; // 실제 스케일 y값 사용
+            // --- 계산 끝 ---
+
+            // 초기 스폰 영역 상단 표시 (참고용) -> 실제 스폰 Y 위치로 변경
+            Gizmos.color = Color.cyan;
+            float baseSpawnY = topBorder.position.y + initialSpawnYOffset;
+            Gizmos.DrawLine(new Vector3(leftBoundary, baseSpawnY, 0), 
+                            new Vector3(rightBoundary, baseSpawnY, 0)); // 수정된 코드: 실제 스폰 위치에 표시
+
+            // 각 행의 최종 목표 위치 표시
             Gizmos.color = Color.green;
-            Gizmos.DrawLine(new Vector3(leftBoundary, initialY, 0), new Vector3(rightBoundary, initialY, 0)); // 첫 행 최종 라인
+            float baseTargetY = topBorder.position.y + topOffset;
+            for (int i = 0; i < numberOfRowsToSpawn; i++)
+            {
+                // targetY 계산 시 rowSpacing 대신 actualObjectHeight 사용
+                float targetY = baseTargetY - (i * actualObjectHeight);
+                Gizmos.DrawLine(new Vector3(leftBoundary, targetY, 0), new Vector3(rightBoundary, targetY, 0));
+            }
 
-
+            // 게임 오버 라인
             Gizmos.color = Color.red;
-            Gizmos.DrawLine(new Vector3(leftBoundary, -2.3f, 0), new Vector3(rightBoundary, -2.3f, 0)); // 게임 오버 라인
+            Gizmos.DrawLine(new Vector3(leftBoundary, -2.3f, 0), new Vector3(rightBoundary, -2.3f, 0));
         }
-    }
-
-    // 오브젝트 데이터 저장용 컴포넌트
-    private class ObjectData : MonoBehaviour
-    {
-        public Rigidbody2D rb;
-        public bool isFirstRow = true;
     }
 }
