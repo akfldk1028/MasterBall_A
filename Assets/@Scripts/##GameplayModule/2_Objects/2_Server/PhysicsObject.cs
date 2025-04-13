@@ -34,6 +34,14 @@ namespace Unity.Assets.Scripts.Objects
         protected Vector3 previousPosition;
         protected float previousRotation;
         protected Vector2 previousVelocity;
+
+        // Stuck 감지 관련
+        [Header("Stuck 감지")]
+        [SerializeField] protected bool enableStuckDetection = true; // Stuck 감지 활성화 여부
+        [SerializeField] protected float stuckCheckInterval = 3f;   // 멈춤 확인 간격 (초)
+        [SerializeField] protected float stuckVelocityThreshold = 0.1f; // 멈춤 판단 속도 임계값
+        protected float stuckCheckTimer = 0f;
+        protected float stuckVelocityThresholdSqr; // 임계값 제곱 (계산 최적화)
         #endregion
         
         #region 유니티 생명주기 메서드
@@ -57,6 +65,9 @@ namespace Unity.Assets.Scripts.Objects
             previousRotation = transform.rotation.eulerAngles.z;
             if (rb != null)
                 previousVelocity = rb.linearVelocity;
+                
+            // 제곱값 미리 계산
+            stuckVelocityThresholdSqr = stuckVelocityThreshold * stuckVelocityThreshold;
         }
         
         protected virtual void Start()
@@ -69,21 +80,28 @@ namespace Unity.Assets.Scripts.Objects
             if (isInitialized)
             {
                 // 활성화 시 수행할 작업 (예: 물리 재질 재설정)
-                ApplyPhysicsSettings(); // 이름 ApplyPhysicsSettings 로 복원 또는 ApplyColliderSettings 유지 (ApplyPhysicsSettings 사용)
+                ApplyColliderAndMaterialSettings(); // 이름 변경
             }
-        }
-        
-        public virtual void Update()
-        {
-            UpdateState();
         }
         
         protected virtual void FixedUpdate()
         {
-            // 서버 또는 스폰되지 않은 객체일 때 물리 업데이트 수행
-            if (IsServer || !IsSpawned)
+            // 서버 또는 스폰되지 않은 객체일 때 물리 업데이트 및 상태 기록 수행
+            if (HasAuthorityToModifyPhysics()) // 이전 리팩토링의 권한 확인 메서드 사용
             {
                 UpdatePhysics();
+
+                // 이전 상태 기록 로직 이동 (Time.frameCount % 5 조건 제거)
+                previousPosition = transform.position;
+                previousRotation = transform.rotation.eulerAngles.z;
+                if (rb != null && !rb.isKinematic) // rb 직접 사용
+                    previousVelocity = rb.linearVelocity;
+                    
+                // Stuck 감지 로직 호출 (Kinematic 아닐 때만)
+                if (enableStuckDetection && rb != null && !rb.isKinematic)
+                {
+                    UpdateStuckDetection();
+                }
             }
         }
         #endregion
@@ -107,31 +125,36 @@ namespace Unity.Assets.Scripts.Objects
         protected virtual void InitializePhysics() // 이름 복원
         {
             // Rigidbody 설정 적용 로직 제거 (인스펙터에서 설정 가정)
-            ApplyPhysicsSettings(); // 콜라이더 설정 적용
+            ApplyColliderAndMaterialSettings(); // 이름 변경
             isInitialized = true;
         }
         
         /// <summary>
-        /// 콜라이더 및 물리 재질 설정 적용
+        /// 콜라이더 및 물리 재질 설정 적용 (Rigidbody 설정은 제외)
         /// </summary>
-        protected virtual void ApplyPhysicsSettings() // 이름 복원 및 내용 수정
+        protected virtual void ApplyColliderAndMaterialSettings() // 이름 변경 및 내용 수정
         {
-            // Rigidbody 설정 적용 로직 제거
-            // rb.isKinematic = isKinematic;
-            // rb.mass = mass;
-            // ... 등등 제거
-
-            // 콜라이더 및 물리 재질 설정은 유지
+            // 콜라이더 설정 적용
             if (objectCollider != null)
             {
+                // 물리 재질 설정
                 if (physicsMaterial == null)
                 {
-                    physicsMaterial = new PhysicsMaterial2D($"{name}_PhysicsMaterial");
-                    physicsMaterial.bounciness = bounciness;
-                    physicsMaterial.friction = friction;
+                    // 인스펙터에서 할당되지 않았으면 경고 출력 (런타임 생성 대신)
+                    Debug.LogWarning($"[{name}] PhysicsObject: PhysicsMaterial2D가 인스펙터에서 할당되지 않았습니다.", this);
                 }
-                objectCollider.sharedMaterial = physicsMaterial;
+                else
+                {
+                    // 할당된 physicsMaterial이 있을 때만 콜라이더에 적용
+                    objectCollider.sharedMaterial = physicsMaterial;
+                }
+
+                // 트리거 설정
                 objectCollider.isTrigger = isTrigger;
+            }
+            else
+            {
+                Debug.LogWarning($"[{name}] PhysicsObject: Collider2D 컴포넌트가 없습니다. 설정을 적용할 수 없습니다.", this);
             }
         }
         
@@ -141,20 +164,6 @@ namespace Unity.Assets.Scripts.Objects
         protected virtual void UpdatePhysics()
         {
             // 자식 클래스에서 오버라이드하여 사용
-        }
-        
-        /// <summary>
-        /// 상태 업데이트 및 이전 상태 기록 (rb 직접 사용)
-        /// </summary>
-        protected virtual void UpdateState()
-        {
-            if (Time.frameCount % 5 == 0)
-            {
-                previousPosition = transform.position;
-                previousRotation = transform.rotation.eulerAngles.z;
-                if (rb != null && !rb.isKinematic) // rb 직접 사용
-                    previousVelocity = rb.linearVelocity;
-            }
         }
         #endregion
         
@@ -166,10 +175,10 @@ namespace Unity.Assets.Scripts.Objects
         {
             if (rb == null) return;
 
-            // 서버이거나 스폰되지 않은 경우에만 물리력 적용
-            if (IsServer || !IsSpawned)
+            // 권한 확인 후 물리 적용 메서드 호출
+            if (HasAuthorityToModifyPhysics())
             {
-                rb.AddForce(force, forceMode);
+                ApplyPhysicsForce(force, forceMode);
             }
         }
         
@@ -180,10 +189,10 @@ namespace Unity.Assets.Scripts.Objects
         {
              if (rb == null) return;
 
-            // 서버이거나 스폰되지 않은 경우에만 토크 적용
-            if (IsServer || !IsSpawned)
+            // 권한 확인 후 물리 적용 메서드 호출
+            if (HasAuthorityToModifyPhysics())
             {
-                 rb.AddTorque(torque, forceMode);
+                 ApplyPhysicsTorque(torque, forceMode);
             }
         }
         
@@ -194,11 +203,10 @@ namespace Unity.Assets.Scripts.Objects
         {
              if (rb == null) return;
 
-            // 서버이거나 스폰되지 않은 경우에만 발사 로직 수행
-            if (IsServer || !IsSpawned)
+            // 권한 확인 후 물리 적용 메서드 호출
+            if (HasAuthorityToModifyPhysics())
             {
-                 rb.linearVelocity = Vector2.zero; // 기존 속도 초기화
-                 rb.AddForce(direction.normalized * force, forceMode);
+                 PerformPhysicsLaunch(direction, force, forceMode);
             }
         }
         
@@ -284,6 +292,47 @@ namespace Unity.Assets.Scripts.Objects
             float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - 90f;
             Rotate(angle);
         }
+        #endregion
+        
+        #region 물리 적용 도우미 메서드 (Protected)
+
+        /// <summary>
+        /// 이 객체의 물리 상태를 변경할 권한이 있는지 확인합니다. (서버 또는 스폰되지 않은 객체)
+        /// </summary>
+        protected virtual bool HasAuthorityToModifyPhysics()
+        {
+            // 서버이거나 아직 네트워크에 스폰되지 않은 로컬 객체만 물리 상태를 변경할 수 있습니다.
+            return IsServer || !IsSpawned;
+        }
+
+        /// <summary>
+        /// Rigidbody에 실제로 힘을 적용합니다. 권한 확인은 호출하는 쪽에서 수행해야 합니다.
+        /// </summary>
+        protected virtual void ApplyPhysicsForce(Vector2 force, ForceMode2D forceMode)
+        {
+            // rb는 null이 아님이 보장되어야 함 (호출 전에 확인됨)
+            rb.AddForce(force, forceMode);
+        }
+
+        /// <summary>
+        /// Rigidbody에 실제로 토크를 적용합니다. 권한 확인은 호출하는 쪽에서 수행해야 합니다.
+        /// </summary>
+        protected virtual void ApplyPhysicsTorque(float torque, ForceMode2D forceMode)
+        {
+            // rb는 null이 아님이 보장되어야 함 (호출 전에 확인됨)
+            rb.AddTorque(torque, forceMode);
+        }
+
+        /// <summary>
+        /// Rigidbody를 사용하여 실제로 객체를 발사합니다. 권한 확인은 호출하는 쪽에서 수행해야 합니다.
+        /// </summary>
+        protected virtual void PerformPhysicsLaunch(Vector2 direction, float force, ForceMode2D forceMode)
+        {
+            // rb는 null이 아님이 보장되어야 함 (호출 전에 확인됨)
+            rb.linearVelocity = Vector2.zero; // 기존 속도 초기화
+            rb.AddForce(direction.normalized * force, forceMode);
+        }
+
         #endregion
         
         #region 유틸리티 메서드
@@ -396,6 +445,41 @@ namespace Unity.Assets.Scripts.Objects
         protected virtual void HandleCollision(Collision2D collision){}
         
         protected virtual void HandleTrigger(Collider2D other){}        
+        #endregion
+
+        #region Stuck 감지 로직 (Protected Virtual)
+
+        /// <summary>
+        /// 일정 간격으로 객체가 멈췄는지(Stuck) 확인합니다.
+        /// </summary>
+        protected virtual void UpdateStuckDetection()
+        {
+            stuckCheckTimer += Time.fixedDeltaTime;
+            if (stuckCheckTimer >= stuckCheckInterval)
+            {
+                stuckCheckTimer = 0f; // 타이머 리셋
+
+                // Rigidbody 속도의 제곱 크기가 임계값보다 작으면 Stuck 상태로 간주
+                if (rb.linearVelocity.sqrMagnitude < stuckVelocityThresholdSqr)
+                {
+                     #if UNITY_EDITOR || DEVELOPMENT_BUILD
+                     Debug.LogWarning($"[{gameObject.name}] Stuck detected! Velocity magnitude: {rb.linearVelocity.magnitude:F3}");
+                     #endif
+                    OnStuck(); // Stuck 상태 처리 메서드 호출
+                }
+            }
+        }
+
+        /// <summary>
+        /// 객체가 Stuck 상태일 때 호출됩니다. 하위 클래스에서 재정의하여 처리합니다.
+        /// </summary>
+        protected virtual void OnStuck()
+        {
+            // 기본 구현은 비워 둡니다.
+            // 자식 클래스에서 이 메서드를 override 하여
+            // 상태 변경, 작은 힘 가하기 등의 로직을 구현합니다.
+        }
+
         #endregion
     }
 }

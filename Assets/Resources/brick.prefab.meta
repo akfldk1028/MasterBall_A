@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 356a37c20640b96468a30650037856cd
+timeCreated: 1568742453
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 314373
+  packageName: Brick Destroyer - digit smash
+  packageVersion: 1.0
+  assetPath: Assets/Brick Destroyer/Resources/brick.prefab
+  uploadId: 742026

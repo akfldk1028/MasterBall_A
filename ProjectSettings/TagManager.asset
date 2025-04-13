@@ -13,6 +13,7 @@ TagManager:
   - Ground
   - Ball
   - SideWall
+  - Wall
   layers:
   - Default
   - TransparentFX

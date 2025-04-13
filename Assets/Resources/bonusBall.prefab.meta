@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: af19b61f132b0804f9693de116ca80b9
+timeCreated: 1568815007
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 314373
+  packageName: Brick Destroyer - digit smash
+  packageVersion: 1.0
+  assetPath: Assets/Brick Destroyer/Resources/bonusBall.prefab
+  uploadId: 742026

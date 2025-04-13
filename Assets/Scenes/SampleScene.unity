@@ -341,6 +341,7 @@ GameObject:
   - component: {fileID: 841520033067561819}
   - component: {fileID: 8310281714275158485}
   - component: {fileID: 8310281714275158486}
+  - component: {fileID: 8310281714275158487}
   m_Layer: 8
   m_Name: ball
   m_TagString: Untagged
@@ -627,7 +628,7 @@ GameObject:
   - component: {fileID: 7127579670582364450}
   - component: {fileID: 1880831420905964394}
   m_Layer: 6
-  m_Name: borderLeft
+  m_Name: borderRight
   m_TagString: Brick
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -897,7 +898,7 @@ GameObject:
   - component: {fileID: 8453055903471620404}
   - component: {fileID: 1542379107629223389}
   m_Layer: 6
-  m_Name: borderRight
+  m_Name: borderLeft
   m_TagString: Brick
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1077,7 +1078,7 @@ Transform:
   m_GameObject: {fileID: 973086239205364630}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 127.05, y: 1.11, z: -1.7}
+  m_LocalPosition: {x: 127.05, y: 1.11, z: 0}
   m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 1
   m_Children: []
@@ -1136,7 +1137,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!1 &4042772348570358885
 GameObject:
   m_ObjectHideFlags: 0
@@ -1213,7 +1214,7 @@ Transform:
   m_GameObject: {fileID: 5582925972910841327}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 125.84, y: 4.43, z: -9.77}
+  m_LocalPosition: {x: 125.84, y: 4.43, z: -8.4}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1261,7 +1262,7 @@ Transform:
   m_GameObject: {fileID: 2354067430906654503}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 125.641, y: 0.713, z: -1.61}
+  m_LocalPosition: {x: 125.641, y: 0.713, z: 0}
   m_LocalScale: {x: 3.72, y: 0.06666667, z: 0.20000002}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1351,7 +1352,7 @@ Transform:
   m_GameObject: {fileID: 3246346614207339258}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 125.81, y: 3.11, z: -1.5553122}
+  m_LocalPosition: {x: 125.81, y: 3.11, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1950,6 +1951,9 @@ MonoBehaviour:
   isTrigger: 0
   bounciness: 0.7
   friction: 0.4
+  enableStuckDetection: 1
+  stuckCheckInterval: 3
+  stuckVelocityThreshold: 0.1
   leftEnd: {fileID: 4656431462964908344}
   rightEnd: {fileID: 1887168100152546437}
   smoothSpeed: 20
@@ -2092,9 +2096,11 @@ MonoBehaviour:
   isTrigger: 0
   bounciness: 0.7
   friction: 0.4
+  enableStuckDetection: 1
+  stuckCheckInterval: 3
+  stuckVelocityThreshold: 0.1
   ballCount: 1
   launchForce: 30
-  canShoot: 1
   bounceImpactThreshold: 2
   ballModel: {fileID: 973086239205364630}
   ballMaterials: []
@@ -2102,13 +2108,36 @@ MonoBehaviour:
   lineRenderer: {fileID: 0}
   predictionLayerMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 4294967295
   maxRayDistance: 15
   reflectionLineLength: 2
   maxBounceAngle: 75
   plankMoveThreshold: 0.1
   launchDirection: {x: 0, y: 1}
   plank: {fileID: 7368476579731817178}
+--- !u!114 &8310281714275158487
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 973086239205364630}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c28fc4d16f52534c8885d7215e781a4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  leftBorder: {fileID: 4656431462964908344}
+  rightBorder: {fileID: 1887168100152546437}
+  topBorder: {fileID: 2740005256196584925}
+  brickPrefab: {fileID: 1368483499087122, guid: 356a37c20640b96468a30650037856cd, type: 3}
+  bonusBallPrefab: {fileID: 1660242387830592, guid: af19b61f132b0804f9693de116ca80b9, type: 3}
+  starPrefab: {fileID: 1994012603938166, guid: 9d598ce254bc2b74897b59c29a45141e, type: 3}
+  maxBricksPerRow: 8
+  brickSpacing: 0.1
+  topOffset: 0.2
+  moveDownDistance: 0.85
+  movingDownStep: 0.04
 --- !u!212 &8453055903471620404
 SpriteRenderer:
   m_ObjectHideFlags: 0

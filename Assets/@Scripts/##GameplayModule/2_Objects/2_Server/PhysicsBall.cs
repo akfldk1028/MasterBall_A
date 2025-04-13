@@ -9,13 +9,21 @@ using static Define;
 
 namespace Unity.Assets.Scripts.Objects
 {
+    // 상태 Enum 정의
+    public enum EBallState
+    {
+        None,      // 초기 상태 또는 정의되지 않은 상태
+        Ready,     // 플랭크 위에서 발사 대기 중
+        Launching, // 여러 개의 공을 순차적으로 발사 중
+        Moving     // 발사 완료 후 자유롭게 이동 중
+    }
+
     public class PhysicsBall : PhysicsObject
     {
-        #region Ball Properties
+        #region Fields & Properties
         [Header("Ball Properties")]
         [SerializeField] private int ballCount = 1;
         [SerializeField] private float launchForce = 1f;
-        [SerializeField] private bool canShoot = true;
         [SerializeField] private float bounceImpactThreshold = 2f; // 튕김 판정 임계값
         
         [Header("Ball Visuals")]
@@ -37,8 +45,7 @@ namespace Unity.Assets.Scripts.Objects
         [SerializeField] private Vector2 launchDirection = Vector2.up;
         [SerializeField] private PhysicsPlank plank; // Assign the GameObject with PhysicsPlank script in Inspector
         private float previousPlankX;
-        private bool isReadyForPlankLaunch = false;
-        private bool _firstCheckAfterReady = false; // 준비 후 첫 번째 체크 여부 플래그
+        private Collider2D _plankCollider;
         private const float SPAWN_OFFSET_Y = 0.05f;
         
         // Ball Behavior
@@ -46,47 +53,43 @@ namespace Unity.Assets.Scripts.Objects
         private int ballsShooted = 0;
         private float shootTimer = 0;
         private bool waveEnd = false;
-        private float ballStuckTimer = 0;
         private float ballStuckYPos = 0;
         private bool _needsPositionReset = false; // LateUpdate에서 위치 재설정 필요 여부 플래그
-        #endregion
         
-        #region Network & System Properties
         // 네트워크 변수
         private NetworkVariable<int> _syncedBallCount = new NetworkVariable<int>(1);
-        private NetworkVariable<bool> _syncedCanShoot = new NetworkVariable<bool>(true);
+        private NetworkVariable<EBallState> _syncedState = new NetworkVariable<EBallState>(EBallState.None); // 상태 동기화 (여기서 정의)
         
         // 시스템 변수
         [Inject] private ObjectManager _objectManager;
         private Camera mainCamera;
-        private GameObject[] activeBalls;
-        #endregion
         
-        #region ITargetable Implementation
-        // ITargetable 인터페이스 구현
- 
-        
-        #endregion
-        
-
-        private Collider2D _plankCollider;
-        // private ObjectPlacement _objectPlacement;
-
-        #region Override Methods
-        // Awake 메서드 제거
-        // protected void Awake()
-        // {
-        //     // ...
-        // }
-
-        // LaunchInDirection 메서드는 rb를 직접 사용하므로 유지
-        public void LaunchInDirection(Vector2 direction, float launchForce = 10f)
+        // 상태 머신 변수
+        private EBallState _currentState = EBallState.None;
+        public EBallState CurrentState
         {
-                rb.linearVelocity = Vector2.zero;
-    
-                rb.AddForce(direction.normalized * launchForce, ForceMode2D.Impulse);
+            get => _currentState;
+            protected set
+            {
+                if (_currentState != value)
+                {
+                     #if UNITY_EDITOR || DEVELOPMENT_BUILD
+                     Debug.Log($"[{gameObject.name}] State Change: {_currentState} -> {value}");
+                     #endif
+                    _currentState = value;
+                    // 서버이고 스폰된 상태면 클라이언트에 상태 동기화
+                    if (IsServer && IsSpawned)
+                    {
+                        _syncedState.Value = _currentState;
+                    }
+                    // 상태 진입 시 초기화 로직 호출
+                    OnEnterState(value);
+                }
+            }
         }
+        #endregion
 
+        #region Unity Lifecycle Methods
         public override bool Init()
         {
             if (!base.Init()) // base.Init() 호출 및 결과 확인
@@ -96,18 +99,7 @@ namespace Unity.Assets.Scripts.Objects
             ObjectType = EObjectType.None; // Define.cs 에 Ball 추가 필요
 
             lineRenderer = GetComponent<LineRenderer>();
-
-            if (objectCollider == null)
-            {
-                Debug.LogError("[Ball] Init: Ball Collider (objectCollider) is null!");
-                return false;
-            }
-
-            // 플랭크 콜라이더는 여전히 필요하면 가져옵니다.
-            if (plank != null)
-                _plankCollider = plank.GetComponent<BoxCollider2D>();
-            else
-                Debug.LogWarning("[Ball] Init: Plank is not assigned.");
+            _plankCollider = plank.GetComponent<BoxCollider2D>();
 
             if (lineRenderer != null)
             {
@@ -119,20 +111,49 @@ namespace Unity.Assets.Scripts.Objects
             return true;
         }
         
-        #region Unity Lifecycle Methods
-        // Start 메서드 추가
         protected virtual void Start() // virtual로 선언하여 혹시 모를 자식 클래스 오버라이드 허용
         {
+            // 서버에서만 초기 상태 설정 및 위치 조정
+            if (IsServer || !IsSpawned)
+            {
+                 ResetBallToReadyState(); // 초기 상태 및 위치 설정
+           		 GetComponent<ObjectPlacement>().PlaceNewObjectsOnTheScene();
 
-            SetBallPositionAbovePlank();
-
-            isReadyForPlankLaunch = true; // 발사 준비 완료
-
-
-            _firstCheckAfterReady = true; // 첫 프레임 델타 체크 방지 플래그 활성화
-            previousPlankX = (plank != null) ? plank.transform.position.x : transform.position.x; // 초기 X 위치 저장
+            }
         }
 
+        public void Update()
+        {
+            // 서버에서만 상태 머신 로직 실행
+            if (IsServer || !IsSpawned) // 로컬 테스트용으로 !IsSpawned 추가
+            {
+                UpdateStateMachine();
+            }
+
+            // 클라이언트 측 예측 또는 시각적 업데이트가 필요하다면 여기에 추가
+            // 예: 라인 렌더러 업데이트 등
+            // UpdateVisuals();
+        }
+        
+        protected override void FixedUpdate()
+        {
+            base.FixedUpdate(); // 부모 FixedUpdate 호출 (이전 상태 기록 등)
+            
+            // 서버에서만 물리 관련 업데이트 수행
+             if (IsServer || !IsSpawned) // 로컬 테스트용으로 !IsSpawned 추가
+             {
+                // Moving 상태에서만 물리 업데이트 수행
+                 if (CurrentState == EBallState.Moving && rb != null && !rb.isKinematic)
+                 {
+                     UpdateMovingPhysics();
+                 }
+             }
+        }
+        
+        // 다른 Unity 생명주기 메서드는 필요시 여기에 추가 (OnEnable, OnDisable, LateUpdate 등)
+        #endregion
+        
+        #region Network Lifecycle Methods
         public override void OnNetworkSpawn()
         {
             base.OnNetworkSpawn();
@@ -140,17 +161,19 @@ namespace Unity.Assets.Scripts.Objects
             if (IsServer)
             {
                 _syncedBallCount.Value = ballCount;
-                _syncedCanShoot.Value = canShoot;
+                _syncedState.Value = CurrentState; // 초기 상태 동기화
             }
 
             if (IsClient)
             {
                 _syncedBallCount.OnValueChanged += OnBallCountChanged;
-                _syncedCanShoot.OnValueChanged += OnCanShootChanged;
-            }
+                _syncedState.OnValueChanged += OnStateChanged; // 상태 변경 콜백 등록
 
+                 // 클라이언트는 서버로부터 받은 상태를 즉시 적용
+                CurrentState = _syncedState.Value;
+            }
         }
-        #endregion
+        
         public override void OnNetworkDespawn()
         {
             base.OnNetworkDespawn();
@@ -158,83 +181,219 @@ namespace Unity.Assets.Scripts.Objects
             if (IsClient)
             {
                 _syncedBallCount.OnValueChanged -= OnBallCountChanged;
-                _syncedCanShoot.OnValueChanged -= OnCanShootChanged;
+                _syncedState.OnValueChanged -= OnStateChanged; // 상태 변경 콜백 해제
             }
         }
         
-        public override void Update()
-        {
-            base.Update();
-            
-            // 게임 상태 체크
-            // if (Vars.canContinue && ballNumberText != null && numberOfBalls != null)
-            // {
-            //     // 공 개수 텍스트 위치 업데이트
-            //     UpdateBallNumberTextPosition();
-            // }
-            
-            // 플랭크 이동 감지 및 자동 발사 로직
-            HandlePlankLaunch();
-
-            HandleMultipleBallLaunch();
-            
-            // 웨이브 상태 체크 및 리셋 - 천천히 이동 로직 제거
-            // HandleWaveReset(); // 천천히 이동 로직 제거 (BottomBoundary에서 바로 처리)
-        }
+        // 네트워크 콜백 메서드들
+        private void OnBallCountChanged(int previousValue, int newValue){ ballCount = newValue;}
         
-        protected override void FixedUpdate()
+        private void OnStateChanged(EBallState previousValue, EBallState newValue)
         {
-            base.FixedUpdate(); // 부모 FixedUpdate 호출 (서버 측 UpdatePhysics 호출)
-            
-            // 볼의 물리적 움직임 업데이트 (기존 로직 유지)
-            if (IsServer && !canShoot && rb != null && rb.linearVelocity.magnitude > 0)
+            // 클라이언트는 서버로부터 받은 상태를 적용
+            if (!IsServer)
             {
-                if (rb.linearVelocity.magnitude < 5f)
+                 CurrentState = newValue;
+            }
+        }
+        #endregion
+        
+        #region Overridden Methods
+        protected override void OnStuck()
+        {
+            base.OnStuck(); // 부모 클래스의 기본 구현 호출 (필요시)
+            
+            // 현재 Moving 상태일 때만 임의의 방향으로 약한 힘을 가해 공이 움직이도록 함
+            if (CurrentState == EBallState.Moving)
+            {
+                #if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.LogWarning($"[{gameObject.name}] Ball is stuck. Applying small random force.");
+                #endif
+                
+                // 즉시 작은 힘을 가해 공을 움직이게 함
+                if (rb != null && !rb.isKinematic)
                 {
-                    rb.linearVelocity = rb.linearVelocity.normalized * 10f;
+                    // 랜덤한 방향으로 작은 힘 적용
+                    ApplyForce(UnityEngine.Random.insideUnitCircle.normalized * 0.15f, ForceMode2D.Impulse);
                 }
             }
         }
         
-  
+        // 충돌 처리 (HandleCollision 오버라이드)
+        protected override void HandleCollision(Collision2D collision)
+        {
+            // 서버에서만 충돌 처리
+            if (!IsServer && IsSpawned) return; // 클라이언트는 충돌 로직 직접 처리 안함
+
+            // 벽돌 또는 벽과의 충돌 처리
+            if (collision.gameObject.CompareTag("Brick") || collision.gameObject.CompareTag("Wall"))
+            {
+                HandleBrickOrWallCollision(collision);
+            }
+            // 플랭크와의 충돌 처리 (Moving 상태일 때만)
+            else if (CurrentState == EBallState.Moving && collision.gameObject.CompareTag("Plank"))
+            {
+                 // 플랭크 충돌 로직 (튕기는 각도 조절 등)
+                 HandlePlankCollision(collision);
+            }
+            // 다른 물리 객체와의 충돌 (필요시 추가)
+            // else if (collision.gameObject.GetComponent<PhysicsObject>() != null) { ... }
+        }
+
+        // 트리거 처리 (HandleTrigger 오버라이드)
+        protected override void HandleTrigger(Collider2D other)
+        {
+             // 서버에서만 트리거 처리
+             if (!IsServer && IsSpawned) return; // 클라이언트는 트리거 로직 직접 처리 안함
+
+            // 바닥 경계선 트리거 (공 회수)
+            if (other.CompareTag("BottomBoundary"))
+            {
+                // 상태 확인 조건 제거! 바닥에 닿으면 무조건 리셋 시도
+                #if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"[{gameObject.name}] Ball hit BottomBoundary. Returning to Ready state regardless of current state ({CurrentState}).");
+                #endif
+                ResetBallToReadyState();
+            }
+            // 아이템 트리거 (필요시 추가)
+            // else if (other.CompareTag("Item")) { ... }
+        }
         
-        // public override void OnDamaged(BaseObject attacker, SkillBase skill)
-        // {
-            // base.OnDamaged(attacker, skill);
-            
-            // 공 데미지 처리 (필요시 구현)
-        // }
+        // 기즈모 렌더링
+        protected override void OnDrawGizmos()
+        {
+             base.OnDrawGizmos(); // 부모 기즈모 호출
+
+             // 상태별 추가 정보 표시 (예시)
+             #if UNITY_EDITOR
+             UnityEditor.Handles.Label(transform.position + Vector3.up * 0.5f, $"State: {CurrentState}");
+             if (CurrentState == EBallState.Ready)
+             {
+                 Gizmos.color = Color.green;
+                 Gizmos.DrawLine(transform.position, transform.position + (Vector3)launchDirection * 2f);
+             }
+             #endif
+        }
+        #endregion
+
+        #region State Machine Methods
+        // 상태 머신 메인 로직
+        private void UpdateStateMachine()
+        {
+            switch (CurrentState)
+            {
+                case EBallState.Ready:
+                    UpdateReadyState();
+                    break;
+                case EBallState.Launching:
+                    UpdateLaunchingState();
+                    break;
+                case EBallState.Moving:
+                    UpdateMovingState();
+                    break;
+                case EBallState.None:
+                    // 초기화 안된 상태 처리 (예: Ready 상태로 강제 전환)
+                     if(IsServer) CurrentState = EBallState.Ready;
+                    break;
+            }
+        }
+
+        // 상태 진입 시 초기화 로직
+        private void OnEnterState(EBallState newState)
+        {
+            switch (newState)
+            {
+                case EBallState.Ready:
+                     SetBallPositionAbovePlank(); // 위치/속도 설정
+                     previousPlankX = (plank != null) ? plank.transform.position.x : transform.position.x;
+                     // Kinematic 설정은 여기서!
+                     if (rb != null)
+                     {
+                         rb.isKinematic = true;
+                     }
+                    break;
+                case EBallState.Launching:
+                     // 발사할 공 개수 설정, 타이머 초기화
+                     ballsShooted = 1;
+                     shootTimer = 0f;
+                    break;
+                case EBallState.Moving:
+                    // 이동 상태 시작 시 필요한 초기화
+                    // Stuck 감지는 PhysicsObject에서 자동으로 처리됨
+                    break;
+            }
+        }
+
+        private void UpdateReadyState()
+        {
+             // 게임 진행 가능할 때만 발사 로직 처리
+             if (CommonVars.canContinue && plank != null)
+             {
+                 float currentPlankX = plank.transform.position.x;
+
+                 // 플랭크 위에 공 위치 유지 (약간의 오차 허용)
+                 if (Mathf.Abs(currentPlankX - transform.position.x) > 0.01f || Mathf.Abs(transform.position.y - GetPlankRelativeSpawnY()) > 0.01f)
+                 {
+                     SetBallPositionAbovePlank();
+                 }
+
+                 // 플랭크 이동 감지 (첫 프레임 스킵 로직 제거 - 상태 진입 시 위치 고정으로 대체)
+                 if (Mathf.Abs(currentPlankX - previousPlankX) >= plankMoveThreshold)
+                 {
+                     LaunchBall(launchDirection); // 설정된 기본 방향으로 발사
+                 }
+                 else
+                 {
+                      previousPlankX = currentPlankX; // 이전 위치 업데이트
+                 }
+             }
+        }
+
+        private void UpdateLaunchingState()
+        {
+             if (ballCount > ballsShooted + 1)
+             {
+                  // 다음 공 발사 (첫 공과 같은 방향, 같은 위치에서)
+                  LaunchBall(launchDirection); // PhysicsObject의 Launch 재사용
+
+                  ballsShooted++;
+                  #if UNITY_EDITOR || DEVELOPMENT_BUILD
+                  Debug.Log($"[PhysicsBall] Launching ball {ballsShooted}/{ballCount}");
+                  #endif
+             }
+        }
+
+        private void UpdateMovingState(){}
+
+        private void UpdateMovingPhysics()
+        {
+            // 속도가 너무 느리면 최소 속도 유지
+            if (rb != null && rb.linearVelocity.magnitude > 0 && rb.linearVelocity.magnitude < 5f)
+            {
+                rb.linearVelocity = rb.linearVelocity.normalized * 10f;
+            }
+        }
         #endregion
         
         #region Ball Specific Methods
         // 볼 발사 메서드
         public void LaunchBall(Vector2 direction)
         {
-
-   
             if (rb != null)
             {
+                // 발사 직전에 Kinematic 해제!
+                rb.isKinematic = false;
+
                 Launch(direction.normalized, launchForce, ForceMode2D.Impulse); // PhysicsObject의 Launch 메서드 활용
 
-                canShoot = false;
-                isReadyForPlankLaunch = false; // <-- The change
-                _firstCheckAfterReady = false;
-
-                if (IsServer && IsSpawned)
-                {
-                    _syncedCanShoot.Value = false;
-                }
-
-                // 여러 개 공 발사 준비
+                // 상태 전환
                 if (ballCount > 1)
                 {
-                    multipleBalls = true;
-                    ballsShooted = 0;
-                    shootTimer = 0f;
+                    CurrentState = EBallState.Launching;
                 }
                 else
                 {
-                    multipleBalls = false;
+                    CurrentState = EBallState.Moving;
                 }
             }
         }
@@ -254,52 +413,36 @@ namespace Unity.Assets.Scripts.Objects
             }
         }
         
-
-        
-
-        // 플랭크 위로 볼 위치 설정
-        private void SetBallPositionAbovePlank()
+        // 공을 Ready 상태로 리셋하는 메서드
+        private void ResetBallToReadyState()
         {
-            if (plank != null)
-            {
-                // Debug.Log($"[SetBallPositionAbovePlank Frame {Time.frameCount}] Function Called.");
-                if (_plankCollider != null)
-                {
-                    // 플랭크의 현재 위치 및 크기 정보 가져오기
-                    Vector3 currentPlankPosition = plank.transform.position;
-                    Vector3 plankScale = plank.transform.localScale;
-                    Debug.Log($"[SetBallPositionAbovePlank Frame {Time.frameCount}] Current Plank Position = {currentPlankPosition}, Scale = {plankScale}");
+             // 상태 변경 전에 명시적으로 속도 초기화 (안전 장치)
+             if (rb != null)
+             {
+                 rb.linearVelocity = Vector2.zero;
+                 rb.angularVelocity = 0f;
+             }
 
-                    // X 좌표: 플랭크의 정중앙 위치 (위치는 이미 중앙이지만 명시적으로 표현)
-                    float centerX = currentPlankPosition.x;
-                    previousPlankX = centerX;  // 발사 로직용 저장
+             // 상태 변경 (OnEnterState에서 위치 설정 및 Kinematic 설정)
+             CurrentState = EBallState.Ready;
 
-                    // Y 좌표 계산
-                    float plankHalfHeight = (plankScale.y * 0.5f);
-                    float plankTopY = currentPlankPosition.y + plankHalfHeight;
-                    float ballRadiusY = (transform.localScale.y * 0.5f);
-                    float spawnY = plankTopY + ballRadiusY + SPAWN_OFFSET_Y;
-
-                    // 최종 위치 설정 (X: 플랭크 중앙, Y: 플랭크 상단 + 볼 반지름 + 오프셋, Z: 플랭크와 동일)
-                    Vector3 finalPos = new Vector3(centerX, spawnY, currentPlankPosition.z);
-                    transform.position = finalPos;
-
-                    // 속도 초기화 (추가)
-                    if (rb != null)
-                    {
-                        rb.linearVelocity = Vector2.zero;
-                        rb.angularVelocity = 0f;
-                    }
-
-                    Debug.Log($"[SetBallPositionAbovePlank Frame {Time.frameCount}] Ball position set to: {finalPos}");
-                }
-                else { Debug.LogWarning("[Ball SetBallPositionAbovePlank] Plank Collider is null"); }
-            }
-            else { Debug.LogWarning("[Ball SetBallPositionAbovePlank] Plank reference is null"); }
+             ResetWave(); // CommonVars 변수들 초기화
         }
         
-   
+        // 웨이브 리셋 (게임 로직 관련 변수 초기화)
+        private void ResetWave()
+        {
+            // 이 변수들이 Define.cs 또는 다른 곳에 정의되어 있어야 합니다.
+            // 만약 CommonVars가 없다면, Define.cs 또는 관련 스크립트 확인 필요
+            CommonVars.ballsReachedDistance = 0;
+            CommonVars.canContinue = true;
+            CommonVars.startMovingTowardsMainBall = false;
+            CommonVars.firstBallHitBottomCollider = false;
+            CommonVars.newWaveOfBricks = true;
+        }
+        #endregion
         
+        #region Collision Helper Methods
         // 벽돌/벽 충돌 처리
         private void HandleBrickOrWallCollision(Collision2D collision)
         {
@@ -338,291 +481,101 @@ namespace Unity.Assets.Scripts.Objects
             rb.linearVelocity = reflectDir.normalized * currentSpeed;
         }
         
-        // 플랭크 이동 감지 및 자동 발사 처리
-        private void HandlePlankLaunch()
+        // 플랭크 충돌 처리 로직
+        private void HandlePlankCollision(Collision2D collision)
         {
-            if (canShoot && plank != null && CommonVars.canContinue) // 기본 조건
-            {
-                if (isReadyForPlankLaunch) // 발사 준비 되었는가? (Check 1)
-                {
-                    float currentPlankX = plank.transform.position.x;
+             if (rb == null || plank == null) return;
 
-                    // 발사 준비 상태일 때 항상 공의 위치를 플랭크 위로 유지
-                    if (Mathf.Abs(currentPlankX - transform.position.x) > 0.01f)
-                    {
-                        SetBallPositionAbovePlank();
-                    }
+             // 충돌 지점과 플랭크 중심 간의 거리 계산
+             Vector2 contactPoint = collision.GetContact(0).point;
+             Vector2 plankCenter = plank.transform.position;
+             float difference = contactPoint.x - plankCenter.x;
 
-                    if (_firstCheckAfterReady) // 첫 번째 체크인가? (Check 2)
-                    {
-                        previousPlankX = currentPlankX;
-                        _firstCheckAfterReady = false; // 첫 번째 체크 완료
-                        return; // 첫 프레임은 델타 체크 안 함
-                    }
+             // 플랭크 너비 대비 상대적 위치 (-1 ~ 1)
+             float plankWidth = plank.GetComponent<BoxCollider2D>().size.x * plank.transform.localScale.x;
+             float normalizedDifference = Mathf.Clamp(difference / (plankWidth / 2f), -1f, 1f);
 
-                    // 두 번째 프레임 이후: 이동량(Delta) 체크
-                    float deltaX = Mathf.Abs(currentPlankX - previousPlankX);
+             // 상대적 위치에 따라 반사 각도 계산 (최대 각도 제한)
+             float angle = normalizedDifference * maxBounceAngle;
+             Quaternion rotation = Quaternion.Euler(0f, 0f, -angle); // Z축 회전
+             Vector2 bounceDirection = rotation * Vector2.up;
 
-                    if (deltaX > plankMoveThreshold) // 이동량이 임계값보다 큰가? (Check 3)
-                    {
-                        LaunchBall(launchDirection.normalized); // 발사! (내부에서 isReady=false 설정됨)
-                    }
+             // 현재 속력 유지 또는 약간 증가
+             float currentSpeed = Mathf.Max(rb.linearVelocity.magnitude, 5f); // 최소 속도 보장
+             float bounceSpeed = currentSpeed * 1.05f; // 약간 빠르게
 
-                    previousPlankX = currentPlankX; // 다음 프레임 비교를 위해 현재 X 저장
-                }
-            }
+             // 새 속도 적용
+             rb.linearVelocity = bounceDirection.normalized * bounceSpeed;
+
+             #if UNITY_EDITOR || DEVELOPMENT_BUILD
+             Debug.Log($"[PhysicsBall] Plank collision. Difference: {difference:F2}, Angle: {angle:F1}, Speed: {bounceSpeed:F1}");
+             #endif
         }
+        #endregion
         
-        // 멀티 볼 발사 처리
-        private void HandleMultipleBallLaunch()
+        #region Utility Methods
+        // 플랭크 위로 볼 위치 설정
+        private void SetBallPositionAbovePlank()
         {
-            if (!multipleBalls) return;
-            
-            shootTimer += Time.deltaTime;
-            if (shootTimer >= 0.1f)
+            if (plank != null) // 1. 플랭크 GameObject 참조 확인
             {
-                shootTimer = 0;
-                if (ballCount > ballsShooted + 1)
+                // 2. 캐시된 콜라이더가 유효한지 확인, 없으면 다시 가져오기 시도
+                if (_plankCollider == null)
                 {
-                    // 추가 볼 찾기 및 발사
-                    activeBalls = GameObject.FindGameObjectsWithTag("ball");
-                    if (ballsShooted < activeBalls.Length && activeBalls[ballsShooted] != null)
+                     #if UNITY_EDITOR || DEVELOPMENT_BUILD
+                     Debug.LogWarning($"[{gameObject.name} SetBallPositionAbovePlank] _plankCollider was null. Trying GetComponent again on plank '{plank.name}'.");
+                     #endif
+                    _plankCollider = plank.GetComponent<BoxCollider2D>();
+                }
+
+                // 3. 최종적으로 콜라이더를 가져왔는지 확인 후 로직 실행
+                if (_plankCollider != null)
+                {
+                    // 플랭크의 현재 위치 및 크기 정보 가져오기
+                    Vector3 currentPlankPosition = plank.transform.position;
+
+                    // X 좌표: 플랭크의 정중앙 위치
+                    float centerX = currentPlankPosition.x;
+
+                    // Y 좌표 계산
+                    float spawnY = GetPlankRelativeSpawnY();
+
+                    // 최종 위치 설정
+                    Vector3 finalPos = new Vector3(centerX, spawnY, currentPlankPosition.z);
+                    transform.position = finalPos;
+
+                    // 속도 초기화
+                    if (rb != null)
                     {
-                        PhysicsBall ballComponent = activeBalls[ballsShooted].GetComponent<PhysicsBall>();
-                        if (ballComponent != null && ballComponent != this)
-                        {
-                            ballComponent.LaunchBall(launchDirection.normalized);
-                        }
-                        else
-                        {
-                            Rigidbody2D ballRb = activeBalls[ballsShooted].GetComponent<Rigidbody2D>();
-                            if (ballRb != null)
-                            {
-                                ballRb.linearVelocity = Vector2.zero;
-                                ballRb.AddForce(launchDirection.normalized * launchForce);
-                            }
-                        }
-                        ballsShooted++;
+                        rb.linearVelocity = Vector2.zero;
+                        rb.angularVelocity = 0f;
                     }
+
                 }
                 else
                 {
-                    multipleBalls = false;
-                    ballsShooted = 0;
+                    // 여전히 콜라이더를 찾을 수 없으면 에러 로그 출력
+                    Debug.LogError($"[{gameObject.name} SetBallPositionAbovePlank] Plank Collider is STILL null on plank '{plank.name}' even after trying GetComponent!");
                 }
             }
-        }
-        
-        // 웨이브 리셋 처리
-        private void HandleWaveReset()
-        {
-
-        }
-        
-        // 웨이브 리셋
-        private void ResetWave()
-        {
-            CommonVars.ballsReachedDistance = 0;
-            CommonVars.canContinue = true;
-            CommonVars.startMovingTowardsMainBall = false;
-            CommonVars.firstBallHitBottomCollider = false;
-            CommonVars.newWaveOfBricks = true;
+            else
+            {
+                 Debug.LogWarning($"[{gameObject.name} SetBallPositionAbovePlank] Plank reference is null");
+            }
         }
         
         // 플랭크 기준 스폰 Y 좌표 계산
         private float GetPlankRelativeSpawnY()
         {
-            if (plank != null && _plankCollider != null)
-            {
-                float plankHalfHeight = (plank.transform.localScale.y * 0.5f);
-                float plankTopY = plank.transform.position.y + plankHalfHeight;
-                float ballRadiusY = (transform.localScale.y * 0.5f);
-                
-                return plankTopY + ballRadiusY + SPAWN_OFFSET_Y;
-            }
-            
-            Debug.LogWarning("[Ball] GetPlankRelativeSpawnY: Cannot calculate position, returning current Y.");
-            return transform.position.y;
+            if (plank == null || _plankCollider == null) return transform.position.y; // 안전 장치
+
+            Vector3 currentPlankPosition = plank.transform.position;
+            Vector3 plankScale = plank.transform.localScale;
+            float plankHalfHeight = (plankScale.y * _plankCollider.bounds.size.y / plankScale.y * 0.5f); // 정확한 높이 계산
+            float plankTopY = currentPlankPosition.y + plankHalfHeight;
+            float ballRadiusY = (transform.localScale.y * objectCollider.bounds.size.y / transform.localScale.y * 0.5f); // 정확한 반지름 계산
+            return plankTopY + ballRadiusY + SPAWN_OFFSET_Y;
         }
         #endregion
-        
-        #region Network Callbacks
-        // 네트워크 볼 개수 변경 콜백
-        private void OnBallCountChanged(int previousValue, int newValue){ ballCount = newValue;}
-        
-        
-        // 네트워크 발사 가능 상태 변경 콜백
-        private void OnCanShootChanged(bool previousValue, bool newValue)
-        {
-            canShoot = newValue;
-
-            // 발사 가능 상태가 되면 볼 위치 재설정
-            if (canShoot && !previousValue)
-            {
-                // SetBallPositionAbovePlank(); // 직접 호출 제거
-                 _needsPositionReset = true; // 플래그 설정
-                 Debug.Log($"[OnCanShootChanged Frame {Time.frameCount}] Setting _needsPositionReset = true."); // 플래그 설정 로그 추가
-
-                isReadyForPlankLaunch = true;
-                _firstCheckAfterReady = true;
-            }
-        }
-        #endregion
-        
-
-        protected override void HandleCollision(Collision2D collision)
-        {
-            if (collision.gameObject.CompareTag("Plank"))
-            {
-                if (canShoot || isReadyForPlankLaunch)
-                {
-                     // Debug.LogWarning($"[Ball HandleCollision Frame {Time.frameCount}] IGNORING initial plank collision while ready. (canShoot={canShoot}, isReady={isReadyForPlankLaunch})"); // 로그 제거
-                     return;
-                }
-
-                // 공이 이미 발사된 상태에서는 정상적으로 플랭크와 충돌하여 튕깁니다.
-                PhysicsPlank plankComponent = collision.gameObject.GetComponent<PhysicsPlank>();
-                if (plankComponent != null)
-                {
-                    Vector2 bounceVelocity = plankComponent.CalculateBounceVelocity(rb, collision);
-                    if (rb != null)
-                    {
-                         rb.linearVelocity = bounceVelocity;
-                    }
-                }
-            }
-            else if (collision.gameObject.CompareTag("Brick") || collision.gameObject.CompareTag("Wall"))
-            {
-                // 벽돌/벽 충돌은 공이 발사된 후에만 처리
-                if (!canShoot && !isReadyForPlankLaunch && rb.linearVelocity.magnitude > 0.1f)
-                {
-                     HandleBrickOrWallCollision(collision);
-                }
-            }
-        }
-
-
-
-        #region Triggers
-        // 트리거 충돌 이벤트 (바닥 경계, 아이템 등)
-        protected override void HandleTrigger(Collider2D other)
-        {
-            if (other.gameObject.CompareTag("BottomBoundary"))
-            {
-                Debug.Log($"[Ball HandleTrigger Frame {Time.frameCount}] Hit BottomBoundary. FORCING immediate position reset.");
-                
-                // 물리 완전 초기화
-                if (rb != null)
-                {
-                    // 물리엔진 일시 정지 (위치 강제 변경을 위해)
-                    bool wasKinematic = rb.isKinematic;
-                    rb.isKinematic = true;
-                    
-                    // 모든 물리 상태 초기화
-                    rb.linearVelocity = Vector2.zero;
-                    rb.angularVelocity = 0f;
-                    
-                    // 즉시 플랭크 중앙으로 강제 이동
-                    if (plank != null)
-                    {
-                        // 플랭크 위치 가져오기
-                        Vector3 plankPos = plank.transform.position;
-                        Vector3 plankScale = plank.transform.localScale;
-                        
-                        // 플랭크 중앙 위 위치 계산
-                        float plankHalfHeight = plankScale.y * 0.5f;
-                        float plankTopY = plankPos.y + plankHalfHeight;
-                        float ballRadiusY = transform.localScale.y * 0.5f;
-                        float spawnY = plankTopY + ballRadiusY + SPAWN_OFFSET_Y;
-                        
-                        // 강제로 위치 설정
-                        transform.position = new Vector3(plankPos.x, spawnY, plankPos.z);
-                        Debug.Log($"[Ball FORCE RESET] 위치 강제 변경: {transform.position}, 플랭크 위치: {plankPos}");
-                        
-                        // 이전 플랭크 위치 업데이트 (발사 로직용)
-                        previousPlankX = plankPos.x;
-                    }
-                    else
-                    {
-                        Debug.LogError("[Ball] HandleTrigger: plank reference is null!");
-                    }
-                    
-                    // 물리엔진 상태 복원
-                    rb.isKinematic = wasKinematic;
-                }
-                
-                // 상태 초기화
-                canShoot = true;
-                isReadyForPlankLaunch = true;
-                _firstCheckAfterReady = true;
-
-                // 공통 변수 리셋
-                ResetWave();
-                
-                // 서버 오브젝트일 경우 네트워크 변수도 업데이트
-                if (IsServer && IsSpawned)
-                {
-                    _syncedCanShoot.Value = true;
-                }
-            }
-            else if (other.gameObject.CompareTag("star"))
-            {
-                if (other.gameObject != null)
-                {
-                    Destroy(other.gameObject);
-                }
-            }
-            else if (other.gameObject.CompareTag("newBall"))
-            {
-                 // 서버 또는 스폰되지 않은 경우에만 볼 개수 증가 및 동기화
-                 if (IsServer || !IsSpawned)
-                {
-                    ballCount++;
-                     // 스폰된 서버 객체일 때만 NetworkVariable 동기화
-                    if(IsServer && IsSpawned)
-                    {
-                        _syncedBallCount.Value = ballCount;
-                    }
-                }
-                if (other.gameObject != null)
-                {
-                    Destroy(other.gameObject);
-                }
-            }
-        }
-        #endregion
-
-        protected override void OnDrawGizmos() // PhysicsObject 에 이미 있다면 override 키워드 사용
-        {
-            base.OnDrawGizmos(); // 부모 기즈모 호출 (필요시)
-
-#if UNITY_EDITOR
-            if (plank != null && _plankCollider != null)
-            {
-                 // 스폰 위치 계산 (SetBallPositionAbovePlank 로직 재사용 또는 복사)
-                 float plankHalfHeight = (plank.transform.localScale.y * 0.5f);
-                 float plankTopY = plank.transform.position.y + plankHalfHeight;
-                 float ballRadiusY = (transform.localScale.y * 0.5f);
-                 float spawnY = plankTopY + ballRadiusY + SPAWN_OFFSET_Y;
-                 float spawnX = plank.transform.position.x; // 현재 플랭크 X 기준
-
-                 Vector3 spawnPos = new Vector3(spawnX, spawnY, plank.transform.position.z);
-
-                 // 계산된 스폰 위치에 와이어 스피어 그리기
-                 Gizmos.color = Color.yellow;
-                 Gizmos.DrawWireSphere(spawnPos, ballRadiusY); // 공 반지름 크기로 그림
-            }
-#endif
-        }
-
-        protected virtual void LateUpdate() // virtual 추가
-        {
-            if (_needsPositionReset)
-            {
-                Debug.Log($"[Ball LateUpdate Frame {Time.frameCount}] Resetting position based on flag.");
-                SetBallPositionAbovePlank(); // LateUpdate에서 위치 설정
-                _needsPositionReset = false; // 플래그 해제
-            }
-        }
     }
 }
