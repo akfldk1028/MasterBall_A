@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: fa780b08dce0b464484a8dd42ec40e56
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 314373
+  packageName: Brick Destroyer - digit smash
+  packageVersion: 1.0
+  assetPath: Assets/Brick Destroyer/Materials/TilesBall.mat
+  uploadId: 742026

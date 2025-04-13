@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 818f5461ded6e6841a9aa07606c11a0c
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 314373
+  packageName: Brick Destroyer - digit smash
+  packageVersion: 1.0
+  assetPath: Assets/Brick Destroyer/Materials/BorderMaterial.mat
+  uploadId: 742026

@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: bca4efab2cbaf1340a8c996e03c4f10e
+timeCreated: 1568741533
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 6200000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 314373
+  packageName: Brick Destroyer - digit smash
+  packageVersion: 1.0
+  assetPath: Assets/Brick Destroyer/Materials/bounce.physicsMaterial2D
+  uploadId: 742026

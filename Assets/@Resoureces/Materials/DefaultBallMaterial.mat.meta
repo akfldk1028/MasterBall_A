@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: fec3fd35c3e71004480cf3a14b956f0f
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 314373
+  packageName: Brick Destroyer - digit smash
+  packageVersion: 1.0
+  assetPath: Assets/Brick Destroyer/Materials/DefaultBallMaterial.mat
+  uploadId: 742026
