@@ -138,17 +138,10 @@ namespace Unity.Assets.Scripts.Objects
             if (objectCollider != null)
             {
                 // 물리 재질 설정
-                if (physicsMaterial == null)
+                if (physicsMaterial != null)
                 {
-                    // 인스펙터에서 할당되지 않았으면 경고 출력 (런타임 생성 대신)
-                    Debug.LogWarning($"[{name}] PhysicsObject: PhysicsMaterial2D가 인스펙터에서 할당되지 않았습니다.", this);
-                }
-                else
-                {
-                    // 할당된 physicsMaterial이 있을 때만 콜라이더에 적용
                     objectCollider.sharedMaterial = physicsMaterial;
                 }
-
                 // 트리거 설정
                 objectCollider.isTrigger = isTrigger;
             }

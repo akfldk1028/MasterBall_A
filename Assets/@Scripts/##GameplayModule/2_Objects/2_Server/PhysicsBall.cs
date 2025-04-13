@@ -117,7 +117,6 @@ namespace Unity.Assets.Scripts.Objects
             if (IsServer || !IsSpawned)
             {
                  ResetBallToReadyState(); // 초기 상태 및 위치 설정
-           		 GetComponent<ObjectPlacement>().PlaceNewObjectsOnTheScene();
 
             }
         }
@@ -130,9 +129,6 @@ namespace Unity.Assets.Scripts.Objects
                 UpdateStateMachine();
             }
 
-            // 클라이언트 측 예측 또는 시각적 업데이트가 필요하다면 여기에 추가
-            // 예: 라인 렌더러 업데이트 등
-            // UpdateVisuals();
         }
         
         protected override void FixedUpdate()
@@ -468,7 +464,8 @@ namespace Unity.Assets.Scripts.Objects
                     reflectDir.x * Mathf.Cos(randomAngle) - reflectDir.y * Mathf.Sin(randomAngle),
                     reflectDir.x * Mathf.Sin(randomAngle) + reflectDir.y * Mathf.Cos(randomAngle)
                 );
-                
+                Debug.Log($"[{gameObject.name}] Brick collision. ReflectDir: {reflectDir}");
+                Debug.Log($"[{gameObject.name}] Brick collision. ReflectDir: {reflectDir}");
                 // 벽돌에 데미지 적용 (필요시)
                 Brick brick = collision.gameObject.GetComponent<Brick>();
                 if (brick != null)
