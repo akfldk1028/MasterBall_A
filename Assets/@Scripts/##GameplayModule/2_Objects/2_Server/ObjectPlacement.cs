@@ -2,6 +2,14 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+// 열거형 정의
+public enum SpawnableObjectType
+{
+    Brick,
+    BonusBall,
+    Star
+}
+
 public class ObjectPlacement : MonoBehaviour
 {
     [Header("경계 참조")]
@@ -9,7 +17,7 @@ public class ObjectPlacement : MonoBehaviour
     [SerializeField] private Transform rightBorder;
     [SerializeField] private Transform topBorder;
     
-    [Header("오브젝트 설정")]
+    [Header("오브젝트 프리팹")] // Resources.Load 대신 SerializeField 사용
     [SerializeField] private GameObject brickPrefab;
     [SerializeField] private GameObject bonusBallPrefab;
     [SerializeField] private GameObject starPrefab;
@@ -31,10 +39,24 @@ public class ObjectPlacement : MonoBehaviour
     
     private void Awake()
     {
-        // Inspector에서 참조가 없을 경우 기본값 설정
-        if (brickPrefab == null) brickPrefab = Resources.Load<GameObject>("brick");
-        if (bonusBallPrefab == null) bonusBallPrefab = Resources.Load<GameObject>("bonusBall");
-        if (starPrefab == null) starPrefab = Resources.Load<GameObject>("star");
+        // 프리팹 참조 확인 (Inspector에서 할당되지 않았을 경우 경고)
+        if (brickPrefab == null) Debug.LogError("Brick Prefab이 할당되지 않았습니다!");
+        if (bonusBallPrefab == null) Debug.LogError("Bonus Ball Prefab이 할당되지 않았습니다!");
+        if (starPrefab == null) Debug.LogError("Star Prefab이 할당되지 않았습니다!");
+    }
+    
+    // 열거형 타입에 맞는 프리팹 반환
+    private GameObject GetPrefabForType(SpawnableObjectType type)
+    {
+        switch (type)
+        {
+            case SpawnableObjectType.Brick:     return brickPrefab;
+            case SpawnableObjectType.BonusBall: return bonusBallPrefab;
+            case SpawnableObjectType.Star:      return starPrefab;
+            default:
+                Debug.LogError($"알 수 없는 오브젝트 타입: {type}");
+                return brickPrefab; // 기본값으로 Brick 반환
+        }
     }
     
     // 오브젝트 배치 메서드
@@ -85,56 +107,66 @@ public class ObjectPlacement : MonoBehaviour
             
             Vector3 spawnPosition = new Vector3(centerX, initialY, 0);
             
-            // 오브젝트 타입 결정 및 생성
-            GameObject prefab = brickPrefab; // 기본값
-            int randomType = Random.Range(0, 20);
-            
-            if (randomType == 0)
-                prefab = bonusBallPrefab;
-            else if (randomType == 1)
-                prefab = starPrefab;
+            // --- 오브젝트 타입 결정 및 생성 방식 변경 ---
+            SpawnableObjectType objectType = SpawnableObjectType.Brick; // 기본값
+            int randomType = Random.Range(0, 20); // 0~19 범위
+
+            if (randomType == 0) // 1/20 확률 (5%)
+                objectType = SpawnableObjectType.BonusBall;
+            else if (randomType == 1) // 1/20 확률 (5%)
+                objectType = SpawnableObjectType.Star;
+
+            // 열거형으로 프리팹 가져오기
+            GameObject prefabToSpawn = GetPrefabForType(objectType);
+
+            if (prefabToSpawn != null)
+            {
+                // 오브젝트 생성 및 설정
+                GameObject newObject = Instantiate(prefabToSpawn, spawnPosition, Quaternion.identity);
                 
-            // 오브젝트 생성 및 설정
-            GameObject newObject = Instantiate(prefab, spawnPosition, Quaternion.identity);
-            
-            // 정확한 너비로 설정 (중요!)
-            newObject.transform.localScale = new Vector3(brickWidth, brickWidth * 0.8f, 1);
-            
-            // Rigidbody2D 컴포넌트 설정
-            Rigidbody2D rb = newObject.GetComponent<Rigidbody2D>();
-            if (rb == null) rb = newObject.AddComponent<Rigidbody2D>();
-            rb.gravityScale = 0;
-            rb.isKinematic = true;
-            
-            // ObjectData 컴포넌트 추가
-            ObjectData data = newObject.AddComponent<ObjectData>();
-            data.rb = rb;
-            
-            // 첫 행이면 아래로 천천히 이동
-            StartCoroutine(MoveFirstRowDown(newObject, initialY));
-            
-            // 리스트에 추가
-            activeObjects.Add(newObject);
+                // 정확한 너비로 설정 (중요!)
+                newObject.transform.localScale = new Vector3(brickWidth, brickWidth * 0.8f, 1);
+                
+                // Rigidbody2D 컴포넌트 설정
+                Rigidbody2D rb = newObject.GetComponent<Rigidbody2D>();
+                if (rb == null) rb = newObject.AddComponent<Rigidbody2D>();
+                rb.gravityScale = 0;
+                rb.isKinematic = true;
+                
+                // ObjectData 컴포넌트 추가
+                ObjectData data = newObject.AddComponent<ObjectData>();
+                data.rb = rb;
+                
+                // 첫 행이면 아래로 천천히 이동
+                StartCoroutine(MoveFirstRowDown(newObject, initialY));
+                
+                // 리스트에 추가
+                activeObjects.Add(newObject);
+            }
+            // --- 변경 끝 ---
         }
     }
     
     // 첫 행을 천천히 아래로 이동시키는 코루틴
     private IEnumerator MoveFirstRowDown(GameObject obj, float startY)
     {
-
-        
+        float targetY = initialY; // 인스펙터에서 설정한 최종 위치
+        if (obj == null) yield break;
         Rigidbody2D rb = obj.GetComponent<Rigidbody2D>();
-        
-        while (obj != null && obj.transform.position.y > startY)
+        if (rb == null) yield break;
+
+        // Debug.Log($"Moving from {obj.transform.position.y} to {targetY}");
+
+        while (obj != null && obj.transform.position.y > targetY)
         {
             Vector3 pos = obj.transform.position;
-            pos.y -= movingDownStep;
-            
-            if (pos.y <= startY)
-                pos.y = startY;
-                
+            pos.y -= movingDownStep * Time.fixedDeltaTime * 50; // 속도 조절 (기존 값과 비슷하게)
+
+            if (pos.y <= targetY)
+                pos.y = targetY;
+
             rb.MovePosition(pos);
-            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate(); // FixedUpdate 기준으로 대기
         }
     }
     
@@ -202,24 +234,20 @@ public class ObjectPlacement : MonoBehaviour
     // 경계 Gizmo 표시 (에디터에서만)
     private void OnDrawGizmos()
     {
-        if (leftBorder && rightBorder)
+        if (leftBorder && rightBorder && topBorder)
         {
+            Gizmos.color = Color.yellow;
+            float initialY = topBorder.position.y + topOffset;
+            float leftBoundary = leftBorder.position.x + (leftBorder.localScale.x / 2);
+            float rightBoundary = rightBorder.position.x - (rightBorder.localScale.x / 2);
+            Gizmos.DrawLine(new Vector3(leftBoundary, initialY, 0), new Vector3(rightBoundary, initialY, 0)); // 초기 스폰 라인
+
             Gizmos.color = Color.green;
-            Vector3 leftPos = leftBorder.position;
-            Vector3 rightPos = rightBorder.position;
-            
-            // 초기 위치 표시
-            Gizmos.DrawLine(
-                new Vector3(leftPos.x, topBorder.position.y - topOffset, 0),
-                new Vector3(rightPos.x, initialY, 0)
-            );
-            
-            // 게임 오버 위치 표시
+            Gizmos.DrawLine(new Vector3(leftBoundary, initialY, 0), new Vector3(rightBoundary, initialY, 0)); // 첫 행 최종 라인
+
+
             Gizmos.color = Color.red;
-            Gizmos.DrawLine(
-                new Vector3(leftPos.x, -2.3f, 0),
-                new Vector3(rightPos.x, -2.3f, 0)
-            );
+            Gizmos.DrawLine(new Vector3(leftBoundary, -2.3f, 0), new Vector3(rightBoundary, -2.3f, 0)); // 게임 오버 라인
         }
     }
 

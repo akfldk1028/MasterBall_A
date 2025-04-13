@@ -988,7 +988,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!61 &3435831711505139251
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -1312,7 +1312,7 @@ GameObject:
   - component: {fileID: 3206036165390867912}
   - component: {fileID: 6421263586571783089}
   m_Layer: 0
-  m_Name: Player2Camera
+  m_Name: Upper_Client_Camera
   m_TagString: MainCamera
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1379,7 +1379,7 @@ GameObject:
   - component: {fileID: 1829357817455953824}
   - component: {fileID: 5582925972910841328}
   m_Layer: 0
-  m_Name: Main Camera
+  m_Name: Bottom_Main_Camera
   m_TagString: MainCamera
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2206,7 +2206,7 @@ GameObject:
   - component: {fileID: 7988335885461779543}
   - component: {fileID: 1553283092686629432}
   m_Layer: 0
-  m_Name: SideViewSecond_Camera
+  m_Name: Upper_Main_Camera
   m_TagString: MainCamera
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
