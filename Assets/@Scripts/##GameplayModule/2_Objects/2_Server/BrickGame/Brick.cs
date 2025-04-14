@@ -86,11 +86,11 @@ namespace Unity.Assets.Scripts.Objects
         {
             base.OnCollisionEnter2D(collision);
             
-            HandleBallCollision();
+            HandleBallCollision(collision);
         }
         
         // 공과 충돌 시 처리
-        private void HandleBallCollision()
+        private void HandleBallCollision(Collision2D collision)
         {
             // 효과음 재생 (필요한 경우)
             /*
@@ -101,7 +101,17 @@ namespace Unity.Assets.Scripts.Objects
             */
             
             // 체력(wave) 감소 및 시각적 업데이트
-            wave--;
+            // wave--;
+                // PhysicsBall 컴포넌트 참조 얻기
+            PhysicsBall ball = collision.gameObject.GetComponent<PhysicsBall>();
+            
+            // 현재 공의 공격력 (없으면 기본값 1 사용)
+            int attackPower = ball != null ? ball.AttackPower : 1;
+            
+            // 체력(wave) 감소 - 공격력만큼 차감
+            wave -= attackPower;
+
+
             ColorBrick();
             
             if (waveText != null)

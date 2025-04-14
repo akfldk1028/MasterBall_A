@@ -56,6 +56,22 @@ namespace Unity.Assets.Scripts.Objects
         private float ballStuckYPos = 0;
         private bool _needsPositionReset = false; // LateUpdate에서 위치 재설정 필요 여부 플래그
         
+
+
+        [Header("Power Up Effects")]
+        private static int currentPower = 1; // 모든 공이 공유하는 공격력
+        private static float powerTimer = 0f; // 모든 공이 공유하는 타이머
+        [SerializeField] private Material normalMaterial; // 기본 재질
+        [SerializeField] private Material poweredMaterial; // 파워업 상태 재질
+        private Renderer ballRenderer;
+
+        // 정적 변수 접근자
+        public static int SharedPower => currentPower;
+        public static float SharedPowerTimer => powerTimer;
+
+        // 공격력 접근자
+        public int AttackPower => currentPower;
+
         // 네트워크 변수
         private NetworkVariable<int> _syncedBallCount = new NetworkVariable<int>(1);
         private NetworkVariable<EBallState> _syncedState = new NetworkVariable<EBallState>(EBallState.None); // 상태 동기화 (여기서 정의)
@@ -95,7 +111,6 @@ namespace Unity.Assets.Scripts.Objects
             if (!base.Init()) // base.Init() 호출 및 결과 확인
                 return false;
 
-            // ObjectType 설정 (EObjectType.Ball 이 Define에 없으므로 None으로 임시 설정)
             ObjectType = EObjectType.None; // Define.cs 에 Ball 추가 필요
 
             lineRenderer = GetComponent<LineRenderer>();
@@ -119,6 +134,11 @@ namespace Unity.Assets.Scripts.Objects
                  ResetBallToReadyState(); // 초기 상태 및 위치 설정
 
             }
+                // 렌더러 컴포넌트 참조 초기화
+            if (ballRenderer == null)
+            {
+                ballRenderer = GetComponent<Renderer>() ?? ballModel?.GetComponent<Renderer>();
+            }
         }
 
         public void Update()
@@ -128,6 +148,8 @@ namespace Unity.Assets.Scripts.Objects
             {
                 UpdateStateMachine();
             }
+                UpdatePowerStatus();
+
 
         }
         
@@ -237,22 +259,55 @@ namespace Unity.Assets.Scripts.Objects
         }
 
         // 트리거 처리 (HandleTrigger 오버라이드)
+        // PhysicsBall 클래스의 HandleTrigger 메서드 수정
         protected override void HandleTrigger(Collider2D other)
         {
-             // 서버에서만 트리거 처리
-             if (!IsServer && IsSpawned) return; // 클라이언트는 트리거 로직 직접 처리 안함
+            // 서버에서만 트리거 처리
+            if (!IsServer && IsSpawned) return; // 클라이언트는 트리거 로직 직접 처리 안함
 
             // 바닥 경계선 트리거 (공 회수)
             if (other.CompareTag("BottomBoundary"))
             {
-                // 상태 확인 조건 제거! 바닥에 닿으면 무조건 리셋 시도
                 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-                Debug.Log($"[{gameObject.name}] Ball hit BottomBoundary. Returning to Ready state regardless of current state ({CurrentState}).");
+                Debug.Log($"[{gameObject.name}] Ball hit BottomBoundary. Current ball count: {ballCount}");
                 #endif
-                ResetBallToReadyState();
+                
+                // 이 공이 마지막 남은 공인지 확인
+                if (IsLastBall())
+                {
+                    // 마지막 공이면 Ready 상태로 재설정
+                    ResetBallToReadyState();
+                }
+                else
+                {
+                    // 마지막 공이 아니면 이 공만 파괴
+                    Destroy(gameObject);
+                }
             }
-            // 아이템 트리거 (필요시 추가)
-            // else if (other.CompareTag("Item")) { ... }
+        }
+
+        // 이 공이 마지막 남은 공인지 확인하는 메서드
+        private bool IsLastBall()
+        {
+            // 1. 현재 씬의 모든 PhysicsBall 찾기
+            PhysicsBall[] allBalls = FindObjectsOfType<PhysicsBall>();
+            
+            // 2. Moving 또는 Launching 상태인 공의 개수 확인
+            int movingBalls = 0;
+            foreach (PhysicsBall ball in allBalls)
+            {
+                if (ball.CurrentState == EBallState.Moving || ball.CurrentState == EBallState.Launching)
+                {
+                    movingBalls++;
+                }
+            }
+            
+            #if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"[{gameObject.name}] Moving balls count: {movingBalls}");
+            #endif
+            
+            // 3. 이 공을 포함해서 Moving 또는 Launching 상태인 공이 1개(자기 자신)뿐이라면 마지막 공
+            return movingBalls <= 1;
         }
         
         // 기즈모 렌더링
@@ -361,12 +416,27 @@ namespace Unity.Assets.Scripts.Objects
 
         private void UpdateMovingState(){}
 
+        // UpdateMovingPhysics 메서드 개선 - 속도 상한 추가
         private void UpdateMovingPhysics()
         {
-            // 속도가 너무 느리면 최소 속도 유지
-            if (rb != null && rb.linearVelocity.magnitude > 0 && rb.linearVelocity.magnitude < 5f)
+            if (rb != null)
             {
-                rb.linearVelocity = rb.linearVelocity.normalized * 10f;
+                float currentSpeed = rb.linearVelocity.magnitude;
+                
+                // 속도가 너무 느리면 최소 속도 유지
+                if (currentSpeed > 0 && currentSpeed < 5f)
+                {
+                    rb.linearVelocity = rb.linearVelocity.normalized * 10f;
+                }
+                // 속도가 너무 빠르면 최대 속도로 제한
+                else if (currentSpeed > 20f)
+                {
+                    rb.linearVelocity = rb.linearVelocity.normalized * 20f;
+                    
+                    #if UNITY_EDITOR || DEVELOPMENT_BUILD
+                    Debug.LogWarning($"[{gameObject.name}] Ball speed capped at 20 (was {currentSpeed:F1})");
+                    #endif
+                }
             }
         }
         #endregion
@@ -440,139 +510,207 @@ namespace Unity.Assets.Scripts.Objects
         
         #region Collision Helper Methods
         // 벽돌/벽 충돌 처리
-        private void HandleBrickOrWallCollision(Collision2D collision)
+    private void HandleBrickOrWallCollision(Collision2D collision)
+    {
+        if (rb == null) return;
+        
+        // 충돌한 표면의 법선 벡터 가져오기
+        Vector2 normal = collision.contacts[0].normal;
+        
+        // 현재 속도에 기반한 반사 방향 계산
+        Vector2 reflectDir = Vector2.Reflect(rb.linearVelocity.normalized, normal);
+        
+        // 현재 속력 유지 - 여기서 속도 제한 추가
+        float currentSpeed = rb.linearVelocity.magnitude;
+        
+        // 속력이 너무 느리면 기본 속도로 설정 (Stuck 방지)
+        if (currentSpeed < 5f) currentSpeed = 10f;
+        
+        // 속력이 너무 빠르면 최대 속도로 제한 (벽 이탈 방지)
+        float maxSpeed = 20f; // 최대 속도 제한 추가
+        if (currentSpeed > maxSpeed) currentSpeed = maxSpeed;
+        
+        if (collision.gameObject.CompareTag("Brick"))
         {
-            if (rb == null) return;
+            // 벽돌일 경우 약간의 랜덤 방향 추가 (랜덤 각도 범위 축소)
+            float randomAngle = UnityEngine.Random.Range(-3f, 3f) * Mathf.Deg2Rad; // 더 작은 랜덤 범위
+            reflectDir = new Vector2(
+                reflectDir.x * Mathf.Cos(randomAngle) - reflectDir.y * Mathf.Sin(randomAngle),
+                reflectDir.x * Mathf.Sin(randomAngle) + reflectDir.y * Mathf.Cos(randomAngle)
+            );
             
-            // 충돌한 표면의 법선 벡터 가져오기
-            Vector2 normal = collision.contacts[0].normal;
+            // 중복된 로그 제거
+            #if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"[{gameObject.name}] Brick collision. ReflectDir: {reflectDir}, Speed: {currentSpeed}");
+            #endif
             
-            // 현재 속도에 기반한 반사 방향 계산
-            Vector2 reflectDir = Vector2.Reflect(rb.linearVelocity.normalized, normal);
-            
-            // 현재 속력 유지
-            float currentSpeed = rb.linearVelocity.magnitude;
-            
-            // 속력이 너무 느리면 기본 속도로 설정 (Stuck 방지)
-            if (currentSpeed < 5f) currentSpeed = 10f;
-            
-            if (collision.gameObject.CompareTag("Brick"))
+            // 벽돌에 데미지 적용 (필요시)
+            Brick brick = collision.gameObject.GetComponent<Brick>();
+            if (brick != null)
             {
-                // 벽돌일 경우 약간의 랜덤 방향 추가
-                float randomAngle = UnityEngine.Random.Range(-5f, 5f) * Mathf.Deg2Rad;
-                reflectDir = new Vector2(
-                    reflectDir.x * Mathf.Cos(randomAngle) - reflectDir.y * Mathf.Sin(randomAngle),
-                    reflectDir.x * Mathf.Sin(randomAngle) + reflectDir.y * Mathf.Cos(randomAngle)
-                );
-                Debug.Log($"[{gameObject.name}] Brick collision. ReflectDir: {reflectDir}");
-                Debug.Log($"[{gameObject.name}] Brick collision. ReflectDir: {reflectDir}");
-                // 벽돌에 데미지 적용 (필요시)
-                Brick brick = collision.gameObject.GetComponent<Brick>();
-                if (brick != null)
-                {
-                    // brick.OnHit();
-                }
+                // brick.OnHit();
             }
-            
-            // 새 속도 적용
-            rb.linearVelocity = reflectDir.normalized * currentSpeed;
         }
         
-        // 플랭크 충돌 처리 로직
-        private void HandlePlankCollision(Collision2D collision)
-        {
-             if (rb == null || plank == null) return;
+        // 새 속도 적용 - 정규화된 방향에 제한된 속도 적용
+        rb.linearVelocity = reflectDir.normalized * currentSpeed;
+    }
+        
+            // 플랭크 충돌 처리 로직
+    private void HandlePlankCollision(Collision2D collision)
+    {
+        if (rb == null || plank == null) return;
 
-             // 충돌 지점과 플랭크 중심 간의 거리 계산
-             Vector2 contactPoint = collision.GetContact(0).point;
-             Vector2 plankCenter = plank.transform.position;
-             float difference = contactPoint.x - plankCenter.x;
+        // 충돌 지점과 플랭크 중심 간의 거리 계산
+        Vector2 contactPoint = collision.GetContact(0).point;
+        Vector2 plankCenter = plank.transform.position;
+        float difference = contactPoint.x - plankCenter.x;
 
-             // 플랭크 너비 대비 상대적 위치 (-1 ~ 1)
-             float plankWidth = plank.GetComponent<BoxCollider2D>().size.x * plank.transform.localScale.x;
-             float normalizedDifference = Mathf.Clamp(difference / (plankWidth / 2f), -1f, 1f);
+        // 플랭크 너비 대비 상대적 위치 (-1 ~ 1)
+        float plankWidth = plank.GetComponent<BoxCollider2D>().size.x * plank.transform.localScale.x;
+        float normalizedDifference = Mathf.Clamp(difference / (plankWidth / 2f), -1f, 1f);
 
-             // 상대적 위치에 따라 반사 각도 계산 (최대 각도 제한)
-             float angle = normalizedDifference * maxBounceAngle;
-             Quaternion rotation = Quaternion.Euler(0f, 0f, -angle); // Z축 회전
-             Vector2 bounceDirection = rotation * Vector2.up;
+        // 상대적 위치에 따라 반사 각도 계산 (최대 각도 제한)
+        float angle = normalizedDifference * maxBounceAngle;
+        Quaternion rotation = Quaternion.Euler(0f, 0f, -angle); // Z축 회전
+        Vector2 bounceDirection = rotation * Vector2.up;
 
-             // 현재 속력 유지 또는 약간 증가
-             float currentSpeed = Mathf.Max(rb.linearVelocity.magnitude, 5f); // 최소 속도 보장
-             float bounceSpeed = currentSpeed * 1.05f; // 약간 빠르게
+        // 현재 속력 유지 또는 약간 증가 (최대 속도 제한 추가)
+        float currentSpeed = Mathf.Max(rb.linearVelocity.magnitude, 5f); // 최소 속도 보장
+        float maxSpeed = 20f; // 최대 속도 제한
+        
+        // 속도 증가 계수 줄임 (1.05 → 1.02)
+        float bounceSpeed = currentSpeed * 1.02f; 
+        
+        // 최대 속도 넘지 않도록 제한
+        if (bounceSpeed > maxSpeed) bounceSpeed = maxSpeed;
 
-             // 새 속도 적용
-             rb.linearVelocity = bounceDirection.normalized * bounceSpeed;
+        // 새 속도 적용
+        rb.linearVelocity = bounceDirection.normalized * bounceSpeed;
 
-             #if UNITY_EDITOR || DEVELOPMENT_BUILD
-             Debug.Log($"[PhysicsBall] Plank collision. Difference: {difference:F2}, Angle: {angle:F1}, Speed: {bounceSpeed:F1}");
-             #endif
-        }
+        #if UNITY_EDITOR || DEVELOPMENT_BUILD
+        Debug.Log($"[PhysicsBall] Plank collision. Difference: {difference:F2}, Angle: {angle:F1}, Speed: {bounceSpeed:F1}");
+        #endif
+    }
         #endregion
         
         #region Utility Methods
         // 플랭크 위로 볼 위치 설정
-        private void SetBallPositionAbovePlank()
+    private void SetBallPositionAbovePlank()
+    {
+        if (plank != null)
         {
-            if (plank != null) // 1. 플랭크 GameObject 참조 확인
+            // BallPositionUtility 사용하여 위치 계산
+            Vector3 newPosition = BallPositionUtility.GetLaunchPosition(plank, objectCollider, transform);
+            transform.position = newPosition;
+            
+            // 속도 초기화
+            if (rb != null)
             {
-                // 2. 캐시된 콜라이더가 유효한지 확인, 없으면 다시 가져오기 시도
-                if (_plankCollider == null)
-                {
-                     #if UNITY_EDITOR || DEVELOPMENT_BUILD
-                     Debug.LogWarning($"[{gameObject.name} SetBallPositionAbovePlank] _plankCollider was null. Trying GetComponent again on plank '{plank.name}'.");
-                     #endif
-                    _plankCollider = plank.GetComponent<BoxCollider2D>();
-                }
-
-                // 3. 최종적으로 콜라이더를 가져왔는지 확인 후 로직 실행
-                if (_plankCollider != null)
-                {
-                    // 플랭크의 현재 위치 및 크기 정보 가져오기
-                    Vector3 currentPlankPosition = plank.transform.position;
-
-                    // X 좌표: 플랭크의 정중앙 위치
-                    float centerX = currentPlankPosition.x;
-
-                    // Y 좌표 계산
-                    float spawnY = GetPlankRelativeSpawnY();
-
-                    // 최종 위치 설정
-                    Vector3 finalPos = new Vector3(centerX, spawnY, currentPlankPosition.z);
-                    transform.position = finalPos;
-
-                    // 속도 초기화
-                    if (rb != null)
-                    {
-                        rb.linearVelocity = Vector2.zero;
-                        rb.angularVelocity = 0f;
-                    }
-
-                }
-                else
-                {
-                    // 여전히 콜라이더를 찾을 수 없으면 에러 로그 출력
-                    Debug.LogError($"[{gameObject.name} SetBallPositionAbovePlank] Plank Collider is STILL null on plank '{plank.name}' even after trying GetComponent!");
-                }
-            }
-            else
-            {
-                 Debug.LogWarning($"[{gameObject.name} SetBallPositionAbovePlank] Plank reference is null");
+                rb.linearVelocity = Vector2.zero;
+                rb.angularVelocity = 0f;
             }
         }
+        else
+        {
+            Debug.LogWarning($"[{gameObject.name} SetBallPositionAbovePlank] Plank reference is null");
+        }
+    }
         
         // 플랭크 기준 스폰 Y 좌표 계산
-        private float GetPlankRelativeSpawnY()
-        {
-            if (plank == null || _plankCollider == null) return transform.position.y; // 안전 장치
+   private float GetPlankRelativeSpawnY()
+    {
+        if (plank == null) return transform.position.y; // 안전 장치
+        
+        // BallPositionUtility를 사용하여 전체 위치를 계산하고 Y 좌표만 반환
+        Vector3 calculatedPosition = BallPositionUtility.GetLaunchPosition(plank, objectCollider, transform);
+        return calculatedPosition.y;
+    }
 
-            Vector3 currentPlankPosition = plank.transform.position;
-            Vector3 plankScale = plank.transform.localScale;
-            float plankHalfHeight = (plankScale.y * _plankCollider.bounds.size.y / plankScale.y * 0.5f); // 정확한 높이 계산
-            float plankTopY = currentPlankPosition.y + plankHalfHeight;
-            float ballRadiusY = (transform.localScale.y * objectCollider.bounds.size.y / transform.localScale.y * 0.5f); // 정확한 반지름 계산
-            return plankTopY + ballRadiusY + SPAWN_OFFSET_Y;
+    public static void SharedPowerUp(int amount, float duration)
+    {
+        currentPower += amount;
+        powerTimer = Mathf.Max(powerTimer, duration);
+        
+        Debug.Log($"<color=green>[PhysicsBall] 모든 공 공격력 증가: {currentPower}, 남은 시간: {powerTimer}초</color>");
+    }
+
+    public void PowerUp(int amount, float duration)
+    {
+        // 공유 메서드 호출 - 모든 공에 영향
+        SharedPowerUp(amount, duration);
+    }
+
+
+
+ // PhysicsBall의 UpdatePowerStatus 메서드 수정
+    private void UpdatePowerStatus()
+    {
+        // 색상 업데이트는 모든 공에서 실행
+        ColorBallByPower();
+        
+  
+        if (gameObject.name.Contains("ball") || FindObjectsOfType<PhysicsBall>().Length == 1)
+        {
+            if (powerTimer > 0)
+            {
+                powerTimer -= Time.deltaTime;
+                
+                if (powerTimer <= 0)
+                {
+                    powerTimer = 0;
+                    currentPower = 1; // 기본값으로 리셋
+                    
+                    Debug.Log("<color=yellow>[PhysicsBall] 모든 공 공격력 효과 종료</color>");
+                }
+            }
         }
+    }
+    public void ColorBallByPower()
+    {
+        if (ballRenderer == null) return;
+        
+        // 목표 색상 계산 - 정적 공격력 사용
+        Color targetColor;
+        if (currentPower <= 1)
+        {
+            // 기본 상태 - 흰색
+            targetColor = Color.white;
+        }
+        else if (currentPower <= 3)
+        {
+            // 공격력 2~3 - 노란색에서 빨간색으로 전환
+            float intensity = (currentPower - 1) / 2f; // 0~1 사이 값
+            targetColor = new Color(1, 1 - intensity, 0);
+        }
+        else if (currentPower <= 5)
+        {
+            // 공격력 4~5 - 빨간색에서 보라색으로 전환
+            float intensity = (currentPower - 3) / 2f; // 0~1 사이 값
+            targetColor = new Color(1, 0, intensity);
+        }
+        else
+        {
+            // 공격력 6 이상 - 보라색에서 파란색으로 전환
+            float redValue = 1 - Mathf.Min((currentPower - 5) / 3f, 1f);
+            targetColor = new Color(Mathf.Max(redValue, 0), 0, 1);
+        }
+        
+        // 현재 색상에서 목표 색상으로 점진적 전환
+        if (ballRenderer.material.HasProperty("_Color"))
+        {
+            Color currentColor = ballRenderer.material.color;
+            ballRenderer.material.color = Color.Lerp(currentColor, targetColor, Time.deltaTime * 3f); // 속도 조절 가능
+        }
+        
+        // 목표 크기 계산 - 정적 공격력 사용
+        // float targetScale = 1.0f + (_sharedPower - 1) * 0.05f;
+        // targetScale = Mathf.Min(targetScale, 1.3f); // 최대 130%까지만 커지도록 제한
+        
+        // // 현재 크기에서 목표 크기로 점진적 전환
+        // transform.localScale = Vector3.Lerp(transform.localScale, 
+        //     new Vector3(targetScale, targetScale, 1f), Time.deltaTime * 5f); // 속도 조절 가능
+    }
         #endregion
     }
 }
