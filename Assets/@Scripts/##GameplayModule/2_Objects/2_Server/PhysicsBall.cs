@@ -520,29 +520,38 @@ namespace Unity.Assets.Scripts.Objects
         // 현재 속도에 기반한 반사 방향 계산
         Vector2 reflectDir = Vector2.Reflect(rb.linearVelocity.normalized, normal);
         
-        // 현재 속력 유지 - 여기서 속도 제한 추가
+        // 현재 속력 유지
         float currentSpeed = rb.linearVelocity.magnitude;
         
-        // 속력이 너무 느리면 기본 속도로 설정 (Stuck 방지)
+        // 속력이 너무 느리면 기본 속도로 설정
         if (currentSpeed < 5f) currentSpeed = 10f;
         
-        // 속력이 너무 빠르면 최대 속도로 제한 (벽 이탈 방지)
-        float maxSpeed = 20f; // 최대 속도 제한 추가
+        // 속력이 너무 빠르면 최대 속도로 제한
+        float maxSpeed = 12f;
         if (currentSpeed > maxSpeed) currentSpeed = maxSpeed;
         
-        if (collision.gameObject.CompareTag("Brick"))
+        // 벽과의 충돌 경우 특별 처리
+        if (collision.gameObject.CompareTag("Wall"))
+        {
+            // 벽과 거의 평행한 경우 각도 조정 (중요: 벽 타기 방지)
+            float dotProduct = Vector2.Dot(reflectDir, normal);
+            if (Mathf.Abs(dotProduct) < 0.1f) // 거의 평행할 때
+            {
+                // 법선 방향으로 살짝 밀어서 각도 조정
+                reflectDir = reflectDir + normal * 0.2f;
+                reflectDir.Normalize();
+            }
+            
+            // 벽 충돌 시에는 랜덤 성분 없이 정확한 반사 적용
+        }
+        else if (collision.gameObject.CompareTag("Brick"))
         {
             // 벽돌일 경우 약간의 랜덤 방향 추가 (랜덤 각도 범위 축소)
-            float randomAngle = UnityEngine.Random.Range(-3f, 3f) * Mathf.Deg2Rad; // 더 작은 랜덤 범위
+            float randomAngle = UnityEngine.Random.Range(-2f, 2f) * Mathf.Deg2Rad; // 더 작은 랜덤 범위
             reflectDir = new Vector2(
                 reflectDir.x * Mathf.Cos(randomAngle) - reflectDir.y * Mathf.Sin(randomAngle),
                 reflectDir.x * Mathf.Sin(randomAngle) + reflectDir.y * Mathf.Cos(randomAngle)
             );
-            
-            // 중복된 로그 제거
-            #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Debug.Log($"[{gameObject.name}] Brick collision. ReflectDir: {reflectDir}, Speed: {currentSpeed}");
-            #endif
             
             // 벽돌에 데미지 적용 (필요시)
             Brick brick = collision.gameObject.GetComponent<Brick>();
@@ -554,6 +563,9 @@ namespace Unity.Assets.Scripts.Objects
         
         // 새 속도 적용 - 정규화된 방향에 제한된 속도 적용
         rb.linearVelocity = reflectDir.normalized * currentSpeed;
+        
+        // 충돌 후 살짝 이동시켜 연속 충돌 방지
+        transform.position += (Vector3)(reflectDir.normalized * 0.01f);
     }
         
             // 플랭크 충돌 처리 로직
