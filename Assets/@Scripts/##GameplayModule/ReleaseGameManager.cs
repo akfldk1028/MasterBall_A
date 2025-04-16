@@ -255,11 +255,5 @@ public class ReleaseGameManager : MonoBehaviour
         return isGameActive;
     }
     
-    public void TriggerSummonButtonClick()
-    {
-        Debug.Log("[ReleaseGameManager] Triggering Summon Button Click Event");
-        OnSummonButtonClicked?.Invoke();
-        Debug.Log($"<color=green>[ReleaseGameManager] Triggering Summon Button Click Event</color> ");
-        Debug.Log($"<color=cyan>[ReleaseGameManager] Score Updated: {_latestScore} </color> ");
-    }
+
 }

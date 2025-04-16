@@ -855,6 +855,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 1582462703773708660}
   - {fileID: 2034422792}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -904,6 +905,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   bulletPrefab: {fileID: 185070, guid: 085647db17acfbb4292fe73ed9171486, type: 3}
   bulletSpeed: 20
+  bulletFireInterval: 0.1
+  bulletSpreadAngle: 5
 --- !u!1 &1155249053020952
 GameObject:
   m_ObjectHideFlags: 0
@@ -2186,12 +2189,12 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5461063483195123880}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1857596344}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -3086,7 +3089,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 4010900352952537604}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 35570f74e191ee84083bee41f566516c, type: 3}
+  m_Script: {fileID: 11500000, guid: 387b5436fee8a1f469d9ecbe955f2c08, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   ShowTopMostFoldoutHeaderGroup: 1
@@ -6648,7 +6651,6 @@ SceneRoots:
   - {fileID: 1232300082914776794}
   - {fileID: 4439525698294221035}
   - {fileID: 41780156575497199}
-  - {fileID: 1582462703773708660}
   - {fileID: 1815641100064334110}
   - {fileID: 8741812671701486735}
   - {fileID: 1857596344}

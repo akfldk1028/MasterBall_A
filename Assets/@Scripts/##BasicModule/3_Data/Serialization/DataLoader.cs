@@ -23,7 +23,7 @@ namespace Unity.Assets.Scripts.Data
         public event Action OnInitialized;
         public bool IsInitialized => _isInitialized;
 
-        public Dictionary<int, Data.BallData> BallDic { get; private set; } = new Dictionary<int, Data.BallData>();
+        public Dictionary<int, Data.MonsterData> MonsterDic { get; private set; } = new Dictionary<int, Data.MonsterData>();
         public Dictionary<int, Data.HeroData> HeroDic { get; private set; } = new Dictionary<int, Data.HeroData>();
         public Dictionary<int, Data.SkillData> SkillDic { get; private set; } = new Dictionary<int, Data.SkillData>();
         public Dictionary<int, Data.ProjectileData> ProjectileDic { get; private set; } = new Dictionary<int, Data.ProjectileData>();
@@ -71,11 +71,11 @@ namespace Unity.Assets.Scripts.Data
             }
             
  
-            BallDic = LoadJsonToResoureManager<Data.BallDataLoader, int, Data.BallData>("BallData").MakeDict();
-            // HeroDic = LoadJsonToResoureManager<Data.HeroDataLoader, int, Data.HeroData>("HeroData").MakeDict();
-            // SkillDic = LoadJsonToResoureManager<Data.SkillDataLoader, int, Data.SkillData>("SkillData").MakeDict();
-            // EffectDic = LoadJsonToResoureManager<Data.EffectDataLoader, int, Data.EffectData>("EffectData").MakeDict();
-            // AoEDic = LoadJsonToResoureManager<Data.AoEDataLoader, int, Data.AoEData>("AoEData").MakeDict();
+            MonsterDic = LoadJsonToResoureManager<Data.MonsterDataLoader, int, Data.MonsterData>("MonsterData").MakeDict();
+            HeroDic = LoadJsonToResoureManager<Data.HeroDataLoader, int, Data.HeroData>("HeroData").MakeDict();
+            SkillDic = LoadJsonToResoureManager<Data.SkillDataLoader, int, Data.SkillData>("SkillData").MakeDict();
+            EffectDic = LoadJsonToResoureManager<Data.EffectDataLoader, int, Data.EffectData>("EffectData").MakeDict();
+            AoEDic = LoadJsonToResoureManager<Data.AoEDataLoader, int, Data.AoEData>("AoEData").MakeDict();
             _isInitialized = true;
             
             // 초기화 완료 이벤트 발생
