@@ -11,6 +11,15 @@ public class Cannon : BaseObject
     public float sweepAngle = 180f;  // 최대 좌우 회전 각도 (중심 기준 +/- sweepAngle/2)
     public float barrelTurnSpeed = 15.0f; // 포신이 목표 각도로 회전하는 부드러움 정도 (Slerp 속도)
 
+    // --- 발사 위치만 유지 ---
+    [Header("발사 위치")]
+    public Transform firePoint; // 총알이 발사될 위치
+    // ------------------------
+
+    [Header("플레이어 정보")]
+    public int playerID = -1; // 캐논 소유자 플레이어 ID (-1은 중립)
+    public Color playerColor = Color.white; // 플레이어 색상
+
     private bool isInitialized = false;
     private Quaternion centerRotation = Quaternion.identity; // 그리드 중심을 향한 초기 회전
 
@@ -21,6 +30,15 @@ public class Cannon : BaseObject
             Debug.LogError("Turret Barrel이 할당되지 않았습니다!", this);
             enabled = false;
         }
+        
+        // --- 발사 위치 설정 ---
+        if (firePoint == null)
+        {
+            // firePoint가 설정되지 않았으면 포신의 끝부분 또는 자신의 위치 사용
+            firePoint = turretBarrel != null ? turretBarrel : transform;
+            Debug.LogWarning("FirePoint가 할당되지 않아 " + firePoint.name + "의 위치를 사용합니다.", this);
+        }
+        // ----------------------
     }
 
     void Start()

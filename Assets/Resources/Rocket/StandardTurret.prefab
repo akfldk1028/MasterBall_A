@@ -225,9 +225,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ShowTopMostFoldoutHeaderGroup: 1
   turretBarrel: {fileID: 454316}
-  sweepSpeed: 20
+  sweepSpeed: 10
   sweepAngle: 150
-  barrelTurnSpeed: 20
+  barrelTurnSpeed: 10
+  firePoint: {fileID: 482280}
+  playerID: -1
+  playerColor: {r: 1, g: 1, b: 1, a: 1}
 --- !u!1 &187282
 GameObject:
   m_ObjectHideFlags: 0

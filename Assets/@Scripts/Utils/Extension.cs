@@ -23,7 +23,7 @@ public static class Extension
 
 	public static void BindEvent(this GameObject go, Action<PointerEventData> action = null, Define.EUIEvent type = Define.EUIEvent.Click)
 	{
-		// UI_Base.BindEvent(go, action, type);
+		UI_Base.BindEvent(go, action, type);
 	}
 
 	// public static bool IsValid(this GameObject go)
