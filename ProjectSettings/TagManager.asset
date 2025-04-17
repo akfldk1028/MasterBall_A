@@ -14,6 +14,9 @@ TagManager:
   - Ball
   - SideWall
   - Wall
+  - object
+  - ball
+  - GridBlock
   layers:
   - Default
   - TransparentFX
