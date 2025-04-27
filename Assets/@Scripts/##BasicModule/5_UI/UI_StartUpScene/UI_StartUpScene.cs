@@ -229,7 +229,7 @@ namespace Unity.Assets.Scripts.UI
             yield return StartCoroutine(ProcessCompleteStep());
             
             _isLoading = false;
-            UpdateProgress(1.0f, "로딩 완료!");
+            UpdateProgress(1.0f, "Loading Complete!");
         }
         
         /// <summary>
@@ -238,7 +238,7 @@ namespace Unity.Assets.Scripts.UI
         private IEnumerator ProcessInitializeStep()
         {
             _currentStep = LoadingStep.Initialize;
-            UpdateProgress(INIT_PROGRESS_START, "초기화 중...");
+            UpdateProgress(INIT_PROGRESS_START, "Installing...");
             
             // 초기화 단계에서 진행률 서서히 증가
             float elapsed = 0f;
@@ -248,14 +248,14 @@ namespace Unity.Assets.Scripts.UI
             {
                 float t = elapsed / duration;
                 float progress = Mathf.Lerp(INIT_PROGRESS_START, INIT_PROGRESS_END, t);
-                UpdateProgress(progress, "초기화 중...");
+                UpdateProgress(progress, "Installing...");
                 
                 yield return new WaitForSeconds(0.05f);
                 elapsed += 0.05f;
             }
             
             // 마지막에 정확한 종료 진행률로 설정
-            UpdateProgress(INIT_PROGRESS_END, "초기화 중...");
+            UpdateProgress(INIT_PROGRESS_END, "Installing...");
         }
         
         /// <summary>
@@ -266,7 +266,7 @@ namespace Unity.Assets.Scripts.UI
             _currentStep = LoadingStep.ResourceLoad;
             UpdateProgress(RESOURCE_PROGRESS_START, "Resource Load...");
             
-            LogDebug($"[UI_StartUpScene] 리소스 로딩 시작");
+            LogDebug($"[UI_StartUpScene] Resource Load...");
             UpdateDebugInfo($"Resource Load...");
             
             // 리소스 로딩 진행 상황 추적을 위한 변수
@@ -283,7 +283,7 @@ namespace Unity.Assets.Scripts.UI
                 if (_startUpScene == null)
                 {
                     LogError("[UI_StartUpScene] StartUpScene을 찾을 수 없습니다!");
-                    UpdateDebugInfo($"Error: StartUpScene을 찾을 수 없습니다!");
+                    UpdateDebugInfo($"Error: Resource Load...");
                     // 리소스 로드 단계를 건너뛰고 다음 단계로 진행
                     _isResourceLoaded = true;
                     yield break;
@@ -310,7 +310,7 @@ namespace Unity.Assets.Scripts.UI
                     float adjustedProgress = RESOURCE_PROGRESS_START + (loadProgress * (RESOURCE_PROGRESS_END - RESOURCE_PROGRESS_START));
                     
                     // 상태 메시지 업데이트
-                    string status = $"리소스 로드 중... ({count}/{totalCount})";
+                    string status = $"Resource Load... ({count}/{totalCount})";
                     
                     // 진행률 및 상태 업데이트
                     UpdateProgress(adjustedProgress, status);
@@ -339,7 +339,7 @@ namespace Unity.Assets.Scripts.UI
         private IEnumerator ProcessConnectionLoadStep()
         {
             _currentStep = LoadingStep.ConnectionLoad;
-            UpdateProgress(CONNECTION_PROGRESS_START, "네트워크 연결 확인 중...");
+            UpdateProgress(CONNECTION_PROGRESS_START, "Network Connection...");
             
             LogDebug($"[UI_StartUpScene] 네트워크 연결 시작");
             UpdateDebugInfo($"Network Connection...");
@@ -348,7 +348,7 @@ namespace Unity.Assets.Scripts.UI
             if (_connectionManager == null)
             {
                 LogError("[UI_StartUpScene] ConnectionManager가 null입니다.");
-                UpdateProgress(CONNECTION_PROGRESS_END, "오프라인 모드로 진행");
+                UpdateProgress(CONNECTION_PROGRESS_END, "Offline Mode...");
                 yield break;
             }
 
@@ -358,7 +358,7 @@ namespace Unity.Assets.Scripts.UI
             if (!isOnline)
             {
                 LogWarning("[UI_StartUpScene] 인터넷 연결이 없습니다. 오프라인 모드로 진행합니다.");
-                UpdateProgress(CONNECTION_PROGRESS_END, "오프라인 모드로 진행");
+                UpdateProgress(CONNECTION_PROGRESS_END, "Offline Mode...");
                 yield break;
             }
 
@@ -377,20 +377,20 @@ namespace Unity.Assets.Scripts.UI
             catch (System.Exception e)
             {
                 LogError($"[UI_StartUpScene] 네트워크 연결 확인 중 오류 발생: {e.Message}");
-                UpdateProgress(CONNECTION_PROGRESS_END, "오프라인 모드로 진행");
+                UpdateProgress(CONNECTION_PROGRESS_END, "Offline Mode...");
                 yield break;
             }
             
             if (!isNetworkReady)
             {
                 LogWarning("[UI_StartUpScene] 네트워크 연결이 불안정합니다. 오프라인 모드로 진행합니다.");
-                UpdateProgress(CONNECTION_PROGRESS_END, "오프라인 모드로 진행");
+                UpdateProgress(CONNECTION_PROGRESS_END, "Offline Mode...");
                 yield break;
             }
 
             // 온라인 상태 확인 완료
             LogDebug("[UI_StartUpScene] 네트워크 연결 확인 완료");
-            UpdateProgress(CONNECTION_PROGRESS_END, "네트워크 연결 완료");
+            UpdateProgress(CONNECTION_PROGRESS_END, "Network Connection Complete");
         }
         
         /// <summary>
@@ -399,7 +399,7 @@ namespace Unity.Assets.Scripts.UI
         private IEnumerator ProcessAuthStep()
         {
             _currentStep = LoadingStep.AuthLoad;
-            UpdateProgress(AUTH_PROGRESS_START, "인증 준비 중...");
+            UpdateProgress(AUTH_PROGRESS_START, "Authentication...");
             
             LogDebug("[UI_StartUpScene] 인증 단계 시작");
             
@@ -407,7 +407,7 @@ namespace Unity.Assets.Scripts.UI
             if (_authManager == null)
             {
                 LogError("[UI_StartUpScene] AuthManager가 null입니다");
-                UpdateProgress(AUTH_PROGRESS_END, "인증 실패 (오프라인 모드)");
+                UpdateProgress(AUTH_PROGRESS_END, "Authentication Failed (Offline Mode)");
                 yield break;
             }
             
@@ -418,14 +418,14 @@ namespace Unity.Assets.Scripts.UI
             {
                 float t = elapsed / animDuration;
                 float progress = Mathf.Lerp(AUTH_PROGRESS_START, AUTH_PROGRESS_START + 0.1f, t);
-                UpdateProgress(progress, "인증 서비스 초기화 중...");
+                UpdateProgress(progress, "Authentication...");
                 
                 yield return new WaitForSeconds(0.05f);
                 elapsed += 0.05f;
             }
             
             // 3. Unity 서비스 초기화
-            UpdateProgress(AUTH_PROGRESS_START + 0.1f, "Unity 서비스 초기화 중...");
+            UpdateProgress(AUTH_PROGRESS_START + 0.1f, "Unity Service Initialize...");
             
             // Unity 서비스 초기화 작업 시작
             var initTask = Unity.Services.Core.UnityServices.InitializeAsync();
@@ -436,7 +436,7 @@ namespace Unity.Assets.Scripts.UI
                 yield return null;
             }
             
-            LogDebug("[UI_StartUpScene] Unity 서비스 초기화 완료");
+            LogDebug("[UI_StartUpScene] Unity Service Initialize Complete");
             
             // 4. 인증 수행
             bool success = false;
@@ -462,7 +462,7 @@ namespace Unity.Assets.Scripts.UI
             if (!isAlreadyAuthenticated)
             {
                 // 인증 시도
-                UpdateProgress(AUTH_PROGRESS_START + 0.3f, "인증 중...");
+                UpdateProgress(AUTH_PROGRESS_START + 0.3f, "Authentication...");
                 
                 // 인증 작업 시작
                 var authTask = _authManager.InitializeAndAuthenticateAsync();
@@ -481,7 +481,7 @@ namespace Unity.Assets.Scripts.UI
                 catch (System.Exception e)
                 {
                     LogError($"[UI_StartUpScene] 인증 중 오류: {e.Message}");
-                    UpdateDebugInfo($"인증 오류: {e.Message}");
+                    UpdateDebugInfo($"Authentication Error: {e.Message}");
                     success = false;
                 }
             }
@@ -491,12 +491,12 @@ namespace Unity.Assets.Scripts.UI
             {
                 _isAuthenticated = true;
                 LogDebug($"[UI_StartUpScene] 인증 성공: 플레이어 ID = {_authManager.PlayerId}");
-                UpdateProgress(AUTH_PROGRESS_END, $"인증 완료: {_authManager.PlayerId}");
+                UpdateProgress(AUTH_PROGRESS_END, $"Authentication Complete: {_authManager.PlayerId}");
             }
             else
             {
                 LogError("[UI_StartUpScene] 인증 실패");
-                UpdateProgress(AUTH_PROGRESS_END, "인증 실패 (오프라인 모드)");
+                UpdateProgress(AUTH_PROGRESS_END, "Authentication Failed (Offline Mode)");
             }
             
             LogDebug("[UI_StartUpScene] 인증 단계 완료");

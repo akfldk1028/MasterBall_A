@@ -227,7 +227,14 @@ namespace Unity.Assets.Scripts.Objects
                     
                 // 공통 유틸리티를 사용하여 무작위 방향 생성
                 Vector2 launchDir = BallPositionUtility.GetRandomizedLaunchDirection(baseDirection);
-                
+                Debug.Log($"보너스 공 발사 방향: {launchDir}");
+                Debug.Log($"보너스 공 발사 방향: {launchDir}");
+                Debug.Log($"보너스 공 발사 방향: {launchDir}");
+                Debug.Log($"보너스 공 발사 방향: {launchDir}");
+                Debug.Log($"보너스 공 발사 방향: {launchDir}");
+                Debug.Log($"보너스 공 발사 방향: {launchDir}");
+                Debug.Log($"보너스 공 발사 방향: {launchDir}");
+                Debug.Log($"보너스 공 발사 방향: {launchDir}");
                 // 발사
                 newBall.LaunchBall(launchDir);
                 

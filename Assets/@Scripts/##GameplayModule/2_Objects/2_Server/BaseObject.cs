@@ -18,7 +18,7 @@ namespace Unity.Assets.Scripts.Objects
     // [RequireComponent(typeof(NetworkHealthState),
     //     typeof(NetworkLifeState),
     //     typeof(NetworkAvatarGuidState))]
-    public abstract class BaseObject : NetworkBehaviour
+    public abstract class BaseObject : InitBase
     {
 
         [Inject] public ObjectManager _objectManager;
@@ -140,6 +140,8 @@ namespace Unity.Assets.Scripts.Objects
 
         public virtual bool Init()
         {
+             if (!base.Init()) // base.Init() 호출 및 결과 확인
+                return false;
             // Collider = gameObject.GetComponent<CircleCollider2D>();
             // SkeletonAnim = GetComponent<SkeletonAnimation>();
             // RigidBody = GetComponent<Rigidbody2D>();
@@ -153,21 +155,21 @@ namespace Unity.Assets.Scripts.Objects
 
 
 
-        public override void OnNetworkSpawn()
-        {
-            base.OnNetworkSpawn();
-        }
+        // public override void OnNetworkSpawn()
+        // {
+        //     base.OnNetworkSpawn();
+        // }
 
-        public override void OnNetworkDespawn()
-        {
-            base.OnNetworkDespawn();
-            // if (IsServer)
-            // {
-            //     NetLifeState.LifeState.OnValueChanged -= OnLifeStateChanged;
-            //     m_DamageReceiver.DamageReceived -= ReceiveHP;
-            //     m_DamageReceiver.CollisionEntered -= CollisionEntered;
-            // }
-        }
+        // public override void OnNetworkDespawn()
+        // {
+        //     base.OnNetworkDespawn();
+        //     // if (IsServer)
+        //     // {
+        //     //     NetLifeState.LifeState.OnValueChanged -= OnLifeStateChanged;
+        //     //     m_DamageReceiver.DamageReceived -= ReceiveHP;
+        //     //     m_DamageReceiver.CollisionEntered -= CollisionEntered;
+        //     // }
+        // }
 
         // protected virtual void UpdateAnimation(){}
         // public virtual void OnAnimEventHandler(){}

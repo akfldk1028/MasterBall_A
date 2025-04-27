@@ -52,7 +52,7 @@ public class DebugClassFacade
         EnableClass("HostingState", Color.magenta);
         EnableClass("ConnectionState", Color.magenta);
         EnableClass("SceneManagerEx", Color.magenta);
-
+        EnableClass("ObjectManager", Color.magenta);
 
         // -----------------------------------------------------
         // EnableClass("ObjectManagerFacade", Color.magenta);

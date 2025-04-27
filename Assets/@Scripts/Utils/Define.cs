@@ -124,7 +124,9 @@ public static class Define
 		Env,
 		Effect,
 		Monster,
-		Hero
+		Hero,
+		ball,
+		Ball
 	}
 		public enum ECreatureState
 	{

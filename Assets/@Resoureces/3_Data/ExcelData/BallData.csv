@@ -1,0 +1,7 @@
+﻿Name,DataId,PrefabLabel,Tag,Layer,DescriptionText,ObjectType,BallType,BaseRadius,BaseSpeed,maxSpeed,BaseDamage,LaunchForce,BounceImpactThreshold,maxBounceAngle,DefaultSkillId,EnvSkillId,VisualId,PhysicsId,MinigameId,StatsId,MaterialId,PowerUpEffectId,IconImage,ClientPrefab,LevelConfigsId
+BasicBall,201000,PRELOAD,ball,ball,기본적인 물리 특성을 가진 균형 잡힌 공,ball,neutral,1,5,7,6,10,2,75,10001,20001,30001,40001,50001,90001,60001,70001,ball,ball,1000&2000
+FireBall,201001,PRELOAD,ball,ball,빠르고 화상 데미지를 주는 공,ball,fire,1,6.5,7,8,10,2,75,10001,20001,30001,40001,50001,90001,60001,70001,ball,ball,1000&2000
+물공,201002,PRELOAD,ball,ball,부드럽게 움직이며 광범위한 효과를 주는 공,ball,water,1,5,7,6,10,2,75,10001,20001,30001,40001,50001,90001,60001,70001,ball,ball,1000&2000
+전기공,201003,PRELOAD,ball,ball,매우 빠르고 연쇄 반응을 일으키는 공,ball,electric,1,8,7,5,10,2,75,10001,20001,30001,40001,50001,90001,60001,70001,ball,ball,1000&2000
+땅공,201004,PRELOAD,ball,ball,무겁고 강력한 타격을 주는 공,ball,earth,1,4,7,12,10,2,75,10003,20001,30001,40001,50001,90001,60001,70001,ball,ball,1000&2000
+얼음공,201005,PRELOAD,ball,ball,적을 느려지게 만들고 날카로운 반사 효과를 가진 공,ball,ice,1,5.5,7,7,10,2,75,10001,20001,30001,40001,50001,90001,60001,70001,ball,ball,1000&2000

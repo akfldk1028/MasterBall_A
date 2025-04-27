@@ -1,0 +1,2 @@
+﻿DataId,Name,Mass,Drag,AngularDrag,UseGravity,IsKinematic,PhysicsMaterial,ColliderType,ColliderOffsetX,ColliderOffsetY,ColliderOffsetZ,ColliderRadius,ColliderSizeX,ColliderSizeY,ColliderSizeZ,IsTrigger,Bounciness,Friction
+40001,BasicBallPhysics,1,0,0.05,FALSE,FALSE,BouncyBall,Circle,0,0,0,0.5,1,1,1,FALSE,0.8,0.4

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
-public class InitBase : NetworkBehaviour
+public class InitBase : MonoBehaviour
 {
 	protected bool _init = false;
 

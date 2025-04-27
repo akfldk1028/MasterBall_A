@@ -1,0 +1,25 @@
+{
+  "physicsObjects": [
+    {
+      "DataId": 40001,
+      "Name": "BasicBallPhysics",
+      "Mass": 1.0,
+      "Drag": 0.0,
+      "AngularDrag": 0.05,
+      "UseGravity": false,
+      "IsKinematic": false,
+      "PhysicsMaterial": "BouncyBall",
+      "ColliderType": "Circle",
+      "ColliderOffsetX": 0.0,
+      "ColliderOffsetY": 0.0,
+      "ColliderOffsetZ": 0.0,
+      "ColliderRadius": 0.5,
+      "ColliderSizeX": 1.0,
+      "ColliderSizeY": 1.0,
+      "ColliderSizeZ": 1.0,
+      "IsTrigger": false,
+      "Bounciness": 0.8,
+      "Friction": 0.4
+    }
+  ]
+}

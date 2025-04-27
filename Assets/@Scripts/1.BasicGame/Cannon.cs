@@ -1,8 +1,9 @@
 using UnityEngine;
 using System.Collections;
-using Unity.Assets.Scripts.Objects; // IEnumerator 사용 시 필요할 수 있음
+using Unity.Assets.Scripts.Objects;
+using Unity.Netcode; // IEnumerator 사용 시 필요할 수 있음
 
-public class Cannon : BaseObject
+public class Cannon : NetworkBehaviour
 {
     [Header("회전 설정")]
     public Transform turretBarrel;

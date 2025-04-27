@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic; // List를 사용하기 위해 추가
+using Unity.Netcode;
 
 public class IsometricGridGenerator : MonoBehaviour
 {
@@ -72,6 +73,8 @@ public class IsometricGridGenerator : MonoBehaviour
     
     public void CreateGrid()
     {
+        // Only run on server to spawn network objects
+        if (!NetworkManager.Singleton.IsServer) return;
         // Clear existing objects and reset cannons list
         foreach (Transform child in transform)
         {
@@ -103,19 +106,35 @@ public class IsometricGridGenerator : MonoBehaviour
                 GameObject cube;
                 if (cubePrefab != null)
                 {
+                    // Instantiate without parenting to avoid invalid parent exception
                     cube = Instantiate(cubePrefab, position, Quaternion.identity);
+                    // Ensure cube has a NetworkObject and spawn on server
+                    var netObj = cube.GetComponent<NetworkObject>() ?? cube.AddComponent<NetworkObject>();
+                    if (NetworkManager.Singleton.IsServer)
+                    {
+                        netObj.Spawn();
+                        Debug.Log($"[IsometricGridGenerator] Cube spawned: {cube.name}");
+                    }
                 }
                 else
                 {
+                    // Instantiate primitive cube without parent
                     cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     cube.transform.position = position;
+                    // Add NetworkObject and spawn on server
+                    var netObj2 = cube.AddComponent<NetworkObject>();
+                    if (NetworkManager.Singleton.IsServer)
+                    {
+                        netObj2.Spawn();
+                        Debug.Log($"[IsometricGridGenerator] Primitive cube spawned: {cube.name}");
+                    }
                 }
                 
                 // 태그 설정
                 cube.tag = "GridBlock";
                 
                 cube.transform.localScale = new Vector3(cubeSize, gridHeight, cubeSize);
-                cube.transform.parent = this.transform;
+                // cube.transform.parent = this.transform;
                 
                 // 콜라이더 크기 조정 - 충돌 감지를 위해 위쪽으로 확장
                 BoxCollider collider = cube.GetComponent<BoxCollider>();
@@ -445,9 +464,21 @@ public class IsometricGridGenerator : MonoBehaviour
     // 터렛 인스턴스화 헬퍼 함수 (플레이어 ID 추가)
     void InstantiateTurret(GameObject prefab, Vector3 position, Transform parent, int playerID = -1)
     {
+        // Only spawn turrets on server
+        if (!NetworkManager.Singleton.IsServer) return;
         // 터렛 생성
-        GameObject turretGO = Instantiate(prefab, position, Quaternion.identity, parent);
+        GameObject turretGO = Instantiate(prefab, position, Quaternion.identity);
         
+        // 네트워크 스폰
+        var netObj = turretGO.GetComponent<NetworkObject>() ?? turretGO.AddComponent<NetworkObject>();
+        if (NetworkManager.Singleton.IsServer)
+        {
+            netObj.Spawn();
+            Debug.Log($"[IsometricGridGenerator] Turret spawned: {turretGO.name}");
+            // Parenting after spawn to avoid SpawnStateException
+            // turretGO.transform.SetParent(parent, false);
+        }
+
         // Cannon 컴포넌트 확인 및 리스트에 추가
         Cannon cannon = turretGO.GetComponent<Cannon>();
         if (cannon != null)

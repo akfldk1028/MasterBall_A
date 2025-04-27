@@ -19,7 +19,7 @@ public delegate void OnWaveChangedEventHandler(bool isBossWave);
 /// <summary>
 /// 기본 게임 상태를 관리하는 클래스
 /// </summary>
-[RequireComponent(typeof(NetcodeHooks), typeof(GameStateNetworkHandler))]
+[RequireComponent(typeof(NetcodeHooks),typeof(NetworkObject))]
 public class BasicGameState : GameStateLifetimeScope 
 {    
     #region Fields
@@ -29,20 +29,14 @@ public class BasicGameState : GameStateLifetimeScope
     private GameStateNetworkHandler _networkHandler;
     private bool _isNetworkReady = false;
     private bool _isServer = false; // 서버인지 여부를 저장
+    [SerializeField] private GameObject playerPrefab; // <<-- 플레이어 프리팹 필드 추가
     
     [Header("Game State")]
     private float _timer = 20.0f;
-    private int _wave = 1;
-    private int _money = 50;
-    private int _monsterCount = 0;
-    private bool _isBossWave = false;
+
     
     [Header("Game Settings")]
-    public int HeroCount;
-    public int HeroMaximumCount = 25;
-    public int UpgradeMoney = 100;
-    public int MonsterLimitCount = 100;
-    private float _nextWaveTimer = 60.0f;  // 웨이브 시간 설정
+
     
     [Header("Optimization")]
     private float _timerUpdateInterval = 0.1f;
@@ -57,25 +51,7 @@ public class BasicGameState : GameStateLifetimeScope
     /// </summary>
     public float Timer => _timer;
     
-    /// <summary>
-    /// 현재 웨이브
-    /// </summary>
-    public int Wave => _wave;
-    
-    /// <summary>
-    /// 현재 보유 자금
-    /// </summary>
-    public int Money => _money;
-    
-    /// <summary>
-    /// 현재 몬스터 수
-    /// </summary>
-    public int MonsterCount => _monsterCount;
-    
-    /// <summary>
-    /// 현재 보스 웨이브 여부
-    /// </summary>
-    public bool IsBossWave => _isBossWave;
+
     
     /// <summary>
     /// 현재 게임 상태
@@ -105,6 +81,9 @@ public class BasicGameState : GameStateLifetimeScope
     [Inject] private ObjectManager _objectManager;
     [Inject] private MapManager _mapManager;
 
+    private BrickGameManager _brickGameManager;
+    [Inject] private ReleaseGameManager _releaseGameManager;
+
     #endregion
 
     #region Unity Lifecycle
@@ -115,35 +94,21 @@ public class BasicGameState : GameStateLifetimeScope
     public void Awake()
     {            
         base.Awake();
-        
-        // NetworkHandler 초기화 - 컴포넌트가 없으면 안전하게 추가
-        _networkHandler = GetComponent<GameStateNetworkHandler>();
-        if (_networkHandler == null)
-        {
-            _networkHandler = gameObject.AddComponent<GameStateNetworkHandler>();
-            Debug.Log("[BasicGameState] GameStateNetworkHandler 컴포넌트가 추가되었습니다.");
-        }
-        
-        // NetcodeHooks 초기화 - 컴포넌트가 없으면 안전하게 추가
-        if (m_NetcodeHooks == null)
-        {
-            m_NetcodeHooks = GetComponent<NetcodeHooks>();
-            if (m_NetcodeHooks == null)
+        _brickGameManager = FindObjectOfType<BrickGameManager>();
+        if (_brickGameManager == null)
             {
-                m_NetcodeHooks = gameObject.AddComponent<NetcodeHooks>();
-                Debug.Log("[BasicGameState] NetcodeHooks 컴포넌트가 추가되었습니다.");
+                Debug.LogWarning("BrickGameManager를 찾을 수 없습니다. 점수가 추가되지 않을 수 있습니다.");
             }
-        }
-        
-        // NetworkHandler 초기화
-        if (_networkHandler != null)
-        {
-            _networkHandler.Initialize(this);
-            Debug.Log("[BasicGameState] GameStateNetworkHandler가 초기화되었습니다.");
-        }
-         _sessionManager = SessionManager<SessionPlayerData>.Instance;
-         LogSessionData();
+        // Ensure this object has its NetworkObject spawned on the server
+        // var networkObject = GetComponent<NetworkObject>();
+        // if (networkObject != null && !networkObject.IsSpawned && NetworkManager.Singleton.IsServer)
+        // {
+        //     networkObject.Spawn();
+        //     Debug.Log("[BasicGameState] Manual NetworkObject.Spawn() 호출됨");
+        // }
 
+        _sessionManager = SessionManager<SessionPlayerData>.Instance;
+        LogSessionData();
     }
     /// <summary>
 /// 현재 연결된 모든 플레이어의 세션 데이터를 간단히 로그에 출력합니다.
@@ -182,12 +147,26 @@ public class BasicGameState : GameStateLifetimeScope
 
     public void StartGame()
     {
+
         // 세션이 시작되었음을 알림
         _sessionManager.OnSessionStarted();
         
         // 필요한 초기화 작업
         InitializeState();
+        _brickGameManager.StartGame(); 
+        _releaseGameManager.StartGame();
     }
+
+    private void SpawnInitialBallAndPlank()
+    {
+        // Vector3 position = new Vector3(125.6288f, 3.746667f, 0f);
+        // _objectManager.Spawn<PhysicsBall>(position: position ,templateID: 201000, prefabName: "PhysicsBall", isNetworkObject: false);
+        Debug.Log("[BasicGameState] 서버에서 초기 Ball 및 Plank 스폰 시작");
+        // _objectManager 와 _resourceManager (주입받은) 사용하여 스폰
+        // ... 스폰 로직 ...
+    }
+
+
 
     // 게임 종료 시 호출
     public void EndGame()
@@ -218,14 +197,14 @@ public class BasicGameState : GameStateLifetimeScope
         if (_networkHandler == null) return;
         
         // 특정 플레이어에게만 상태 동기화
-        _networkHandler.SyncStateToClientRpc(
-            _timer,
-            _wave,
-            _money,
-            _monsterCount,
-            _isBossWave,
-            new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } }
-        );
+        // _networkHandler.SyncStateToClientRpc(
+        //     _timer,
+        //     _wave,
+        //     _money,
+        //     _monsterCount,
+        //     _isBossWave,
+        //     new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } }
+        // );
     }
 
     public void OnPlayerDisconnected(ulong clientId)
@@ -239,6 +218,7 @@ public class BasicGameState : GameStateLifetimeScope
     {
         Debug.Log("[BasicGameState] 초기화 시작");
         CheckDependencyInjection();
+        SpawnInitialBallAndPlank();
 
         if (m_NetcodeHooks != null)
         {
@@ -250,6 +230,9 @@ public class BasicGameState : GameStateLifetimeScope
         {
             Debug.LogError("[BasicGameState] NetcodeHooks가 null입니다!");
         }
+
+
+        Debug.Log("[BasicGameState] 초기화 완료");
     }
     
     /// <summary>
@@ -268,6 +251,13 @@ public class BasicGameState : GameStateLifetimeScope
     /// </summary>
     protected override void OnDestroy()
     {
+        // 서버인 경우 클라이언트 연결 콜백 해제
+        if (_networkManager != null && _isServer) // _isServer 플래그 사용
+        {
+            _networkManager.OnClientConnectedCallback -= HandleClientConnected;
+            Debug.Log("[BasicGameState] 클라이언트 연결 콜백 해제 완료 (OnDestroy)");
+        }
+
         if (m_NetcodeHooks != null)
         {
             m_NetcodeHooks.OnNetworkSpawnHook -= OnNetworkSpawn;
@@ -285,16 +275,28 @@ public class BasicGameState : GameStateLifetimeScope
     /// <summary>
     /// 네트워크 스폰 시 호출
     /// </summary>
-    private void OnNetworkSpawn()
+    public void OnNetworkSpawn()
     {
-        Debug.Log("[BasicGameState] 네트워크 스폰 완료");
+        Debug.Log("[BasicGameState] OnNetworkSpawn 호출됨");
+
+
+        _isServer = NetworkManager.Singleton.IsServer;
         _isNetworkReady = true;
-        _isServer = m_NetcodeHooks.IsServer;
-        
+
+        Debug.Log($"[BasicGameState] 네트워크 준비 완료. 서버 여부: {_isServer}");
+
         if (_isServer)
         {
-            InitializeState();
+            // 서버 초기화 로직 (예: 초기 상태 동기화)
+            InitializeState(); // 서버에서만 게임 상태 초기화
             SyncInitialStateToClients();
+            
+
+
+            _networkManager.OnClientConnectedCallback += HandleClientConnected;
+            Debug.Log("[BasicGameState] 클라이언트 연결 콜백 구독 완료 (OnNetworkSpawn)");
+
+             HandleClientConnected(NetworkManager.Singleton.LocalClientId);
         }
     }
     
@@ -303,8 +305,15 @@ public class BasicGameState : GameStateLifetimeScope
     /// </summary>
     private void OnNetworkDespawn()
     {
-        Debug.Log("[BasicGameState] 네트워크 디스폰");
+        Debug.Log("[BasicGameState] OnNetworkDespawn 호출됨");
         _isNetworkReady = false;
+
+        // 서버인 경우 클라이언트 연결 콜백 해제 (OnDestroy에서도 하지만 안전을 위해 추가)
+        if (_networkManager != null && _isServer)
+        {
+            _networkManager.OnClientConnectedCallback -= HandleClientConnected;
+             Debug.Log("[BasicGameState] 클라이언트 연결 콜백 해제 완료 (OnNetworkDespawn)");
+        }
     }
     
     #endregion
@@ -317,11 +326,11 @@ public class BasicGameState : GameStateLifetimeScope
     private void InitializeState()
     {
         _timer = 20.0f;
-        _wave = 1;
-        _money = 50;
-        _monsterCount = 0;
-        _isBossWave = false;
-        Debug.Log("[BasicGameState] 상태 초기화 완료");
+        // _wave = 1;
+        // _money = 50;
+        // _monsterCount = 0;
+        // _isBossWave = false;
+        // Debug.Log("[BasicGameState] 상태 초기화 완료");
     }
     
     /// <summary>
@@ -337,12 +346,7 @@ public class BasicGameState : GameStateLifetimeScope
     /// </summary>
     private void UpdateTimer()
     {
-        // 네트워크 핸들러 null 체크
-        if (_networkHandler == null) 
-        {
-            Debug.LogError("[BasicGameState] NetworkHandler가 null입니다!");
-            return;
-        }
+
         
         if (_timer > 0)
         {
@@ -353,36 +357,17 @@ public class BasicGameState : GameStateLifetimeScope
             if (Time.time - _lastTimerUpdate >= _timerUpdateInterval)
             {
                 _lastTimerUpdate = Time.time;
-                _networkHandler.UpdateTimerClientRpc(_timer);
             }
             
             // 타이머가 0이 되면 새 웨이브 시작
             if (_timer <= 0)
             {
-                StartNextWave();
+                // StartNextWave();
             }
         }
     }
     
-    /// <summary>
-    /// 다음 웨이브 시작
-    /// </summary>
-    private void StartNextWave()
-    {
-        if (_networkHandler == null) return;
-        
-        _wave++;
-        _timer = _nextWaveTimer;
-        
-        // 10의 배수 웨이브는 보스 웨이브
-        _isBossWave = (_wave % 10 == 0);
-        
-        // 클라이언트에 웨이브 변경 알림
-        _networkHandler.WaveChangedClientRpc(_wave, _timer, _isBossWave);
-        
-        Debug.Log($"[BasicGameState] 새 웨이브 시작: Wave={_wave}, 보스={_isBossWave}");
-    }
-    
+
     /// <summary>
     /// 초기 상태를 클라이언트에 동기화
     /// </summary>
@@ -390,13 +375,13 @@ public class BasicGameState : GameStateLifetimeScope
     {
         if (_networkHandler == null) return;
         
-        _networkHandler.SyncInitialStateClientRpc(
-            _timer,
-            _wave,
-            _money,
-            _monsterCount,
-            _isBossWave
-        );
+        // _networkHandler.SyncInitialStateClientRpc(
+        //     _timer,
+        //     _wave,
+        //     _money,
+        //     _monsterCount,
+        //     _isBossWave
+        // );
     }
     
     #endregion
@@ -420,12 +405,7 @@ public class BasicGameState : GameStateLifetimeScope
     {
         if (!IsServerReady() || _networkHandler == null) return;
         
-        if (type == HostType.All)
-        {
-            _money += value;
-            _networkHandler.UpdateMoneyClientRpc(_money);
-            Debug.Log($"[BasicGameState] 돈 추가: +{value}, 현재 돈: {_money}");
-        }
+     
     }
     
 
@@ -458,21 +438,7 @@ public class BasicGameState : GameStateLifetimeScope
         }
     }
     
-    /// <summary>
-    /// 클라이언트 웨이브 정보 업데이트
-    /// </summary>
-    public void UpdateClientWave(int wave, float timer, bool isBossWave)
-    {
-        if (!_isServer) // 클라이언트만 값 업데이트
-        {
-            _wave = wave;
-            _timer = timer;
-            _isBossWave = isBossWave;
-            
-            OnWaveChanged?.Invoke(_isBossWave);
-            OnTimerUp?.Invoke();
-        }
-    }
+
     
     /// <summary>
     /// 클라이언트 돈 업데이트
@@ -481,7 +447,7 @@ public class BasicGameState : GameStateLifetimeScope
     {
         if (!_isServer) // 클라이언트만 값 업데이트
         {
-            _money = money;
+            // _money = money;
             OnMoneyUp?.Invoke();
         }
     }
@@ -493,7 +459,7 @@ public class BasicGameState : GameStateLifetimeScope
     {
         if (!_isServer) // 클라이언트만 값 업데이트
         {
-            _monsterCount = count;
+            // _monsterCount = count;
         }
     }
     
@@ -505,10 +471,10 @@ public class BasicGameState : GameStateLifetimeScope
         if (!_isServer) // 클라이언트만 값 업데이트
         {
             _timer = timer;
-            _wave = wave;
-            _money = money;
-            _monsterCount = monsterCount;
-            _isBossWave = isBossWave;
+            // _wave = wave;
+            // _money = money;
+            // _monsterCount = monsterCount;
+            // _isBossWave = isBossWave;
             
             OnTimerUp?.Invoke();
             OnMoneyUp?.Invoke();
@@ -552,7 +518,12 @@ public class BasicGameState : GameStateLifetimeScope
         {
             Debug.LogError("[BasicGameState] MapManager 주입 실패");
         }
-        
+        _brickGameManager = FindObjectOfType<BrickGameManager>();
+        if (_brickGameManager == null)
+        {
+            Debug.LogWarning("BrickGameManager를 찾을 수 없습니다. 점수가 추가되지 않을 수 있습니다.");
+        }
+
         Debug.Log($"[BasicGameState] ID: {GetInstanceID()}, 이름: {gameObject.name}");
     }
     
@@ -565,6 +536,45 @@ public class BasicGameState : GameStateLifetimeScope
     }
     
     #endregion
+
+    // 클라이언트 연결 시 플레이어 스폰 처리 메서드 <<-- 추가
+    private void HandleClientConnected(ulong clientId)
+    {
+        Debug.Log($"[BasicGameState] Client connected: {clientId}. Spawning player...");
+
+        if (playerPrefab == null)
+        {
+            Debug.LogError("[BasicGameState] Player Prefab is not assigned!", this);
+            return;
+        }
+
+        // TODO: 플레이어 스폰 위치 결정 (필요 시 로직 추가)
+        Vector3 spawnPosition = Vector3.zero; // 예시 위치
+        Quaternion spawnRotation = Quaternion.identity;
+
+        GameObject playerInstance = Instantiate(playerPrefab, spawnPosition, spawnRotation);
+        NetworkObject networkObject = playerInstance.GetComponent<NetworkObject>();
+
+        if (networkObject == null)
+        {
+            Debug.LogError("[BasicGameState] Player Prefab does not have a NetworkObject component!", playerPrefab);
+            Destroy(playerInstance);
+            return;
+        }
+
+        // 플레이어 객체로 스폰하고 소유권 부여
+        networkObject.SpawnAsPlayerObject(clientId);
+
+        Debug.Log($"[BasicGameState] Player spawned for client {clientId}. NetworkObjectId: {networkObject.NetworkObjectId}");
+
+        // (선택 사항) 스폰 후 플레이어 데이터 초기화 또는 색상 설정 등
+        // PlayerController playerController = playerInstance.GetComponent<PlayerController>();
+        // if (playerController != null)
+        // {
+        //     // 예: playerController.PlayerColor.Value = GetColorForPlayer(clientId);
+        //     // 예: SessionManager에서 플레이어 데이터 가져와서 설정
+        // }
+    }
 }
 
 

@@ -1,6 +1,7 @@
 using UnityEngine;
 using TMPro;
 using Unity.Assets.Scripts.Objects;
+using VContainer;
 
 namespace Unity.Assets.Scripts.Objects
 {

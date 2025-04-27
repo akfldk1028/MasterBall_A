@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using Unity.Netcode;
 
 public enum SpawnableObjectType
 {
@@ -356,6 +357,12 @@ private List<PotentialSpawnInfo> CalculatePotentialSpawnPositions(int rowCount)
         Vector3 objectScale = CalculateObjectScale(rightBorder.position.x - leftBorder.position.x);
         
         GameObject newObject = Instantiate(prefabToSpawn, spawnPosition, Quaternion.identity);
+    
+        // if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer && netObj != null)
+        // {
+        //     netObj.Spawn();
+        // }
+
         newObject.transform.localScale = objectScale;
         
         SetupRigidbody(newObject);

@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Unity.Netcode;
+using Unity.Assets.Scripts.Data;
+using static Define;
 
 namespace Unity.Assets.Scripts.Objects
 {
@@ -87,9 +89,7 @@ namespace Unity.Assets.Scripts.Objects
         protected virtual void FixedUpdate()
         {
             // 서버 또는 스폰되지 않은 객체일 때 물리 업데이트 및 상태 기록 수행
-            if (HasAuthorityToModifyPhysics()) // 이전 리팩토링의 권한 확인 메서드 사용
-            {
-                UpdatePhysics();
+           UpdatePhysics();
 
                 // 이전 상태 기록 로직 이동 (Time.frameCount % 5 조건 제거)
                 previousPosition = transform.position;
@@ -102,22 +102,120 @@ namespace Unity.Assets.Scripts.Objects
                 {
                     UpdateStuckDetection();
                 }
-            }
         }
         #endregion
         
         #region 네트워크 메서드
-        public override void OnNetworkSpawn()
-        {
-            base.OnNetworkSpawn();
-        }
+        // public override void OnNetworkSpawn()
+        // {
+        //     base.OnNetworkSpawn();
+        // }
         
-        public override void OnNetworkDespawn()
-        {
-            base.OnNetworkDespawn();
-        }
+        // public override void OnNetworkDespawn()
+        // {
+        //     base.OnNetworkDespawn();
+        // }
+
+
+
+
         #endregion
-        
+
+        public virtual void SetInfo(int templateID)
+        {
+            DataTemplateID = templateID;
+            
+            // 객체 타입에 따라 데이터 로드 및 PhysicsId 가져오기
+            int physicsId = 0;
+            
+            switch (ObjectType)
+            {
+                case EObjectType.ball:
+                    if (DataLoader.instance.BallDic.TryGetValue(templateID, out var ballData))
+                        physicsId = ballData.PhysicsId;
+                    break;
+                    
+                // case EObjectType.brick:
+                //     if (DataLoader.instance.BrickDic.TryGetValue(templateID, out var brickData))
+                //         physicsId = brickData.PhysicsId;
+                //     break;
+                    
+                // case EObjectType.plank:
+                //     if (DataLoader.instance.PlankDic.TryGetValue(templateID, out var plankData))
+                //         physicsId = plankData.PhysicsId;
+                //     break;
+                    
+                // case EObjectType.powerup:
+                //     if (DataLoader.instance.PowerUpDic.TryGetValue(templateID, out var powerUpData))
+                //         physicsId = powerUpData.PhysicsId;
+                //     break;
+                    
+                // 필요한 경우 다른 타입도 추가
+                    
+                default:
+                    // 기본적으로 템플릿 ID가 직접 물리 ID인 경우 (호환성 유지)
+                    physicsId = templateID;
+                    break;
+            }
+            
+            // PhysicsId로 물리 데이터 로드 및 적용
+            if (physicsId > 0 && DataLoader.instance.PhysicsObjectDic.TryGetValue(physicsId, out var physicsData))
+            {
+                ApplyPhysicsData(physicsData);
+            }
+        }
+        // 물리 데이터 적용 (코드 중복 제거)
+        private void ApplyPhysicsData(PhysicsObjectData data)
+        {
+            // Rigidbody 속성 설정
+            if (rb != null)
+            {
+                rb.mass = data.Mass;
+                rb.linearDamping = data.Drag;
+                rb.angularDamping = data.AngularDrag;
+                rb.isKinematic = data.IsKinematic;
+            }
+            
+            // Collider 속성 설정
+            if (objectCollider != null)
+            {
+                objectCollider.isTrigger = data.IsTrigger;
+                
+                if (objectCollider is CircleCollider2D circleCollider)
+                {
+                    circleCollider.offset = new Vector2(data.ColliderOffsetX, data.ColliderOffsetY);
+                    circleCollider.radius = data.ColliderRadius;
+                }
+                else if (objectCollider is BoxCollider2D boxCollider)
+                {
+                    boxCollider.offset = new Vector2(data.ColliderOffsetX, data.ColliderOffsetY);
+                    boxCollider.size = new Vector2(data.ColliderSizeX, data.ColliderSizeY);
+                }
+            }
+            
+            // 물리 재질 설정
+            // if (!string.IsNullOrEmpty(data.PhysicsMaterial))
+            // {
+            //     PhysicsMaterial2D material = ResourceLoader.LoadPhysicsMaterial2D(data.PhysicsMaterial);
+            //     if (material != null)
+            //     {
+            //         physicsMaterial = material;
+            //         physicsMaterial.bounciness = data.Bounciness;
+            //         physicsMaterial.friction = data.Friction;
+                    
+            //         if (objectCollider != null)
+            //         {
+            //             objectCollider.sharedMaterial = physicsMaterial;
+            //         }
+            //     }
+            // }
+            
+            Debug.Log($"<color=green>[{gameObject.name}] 물리 속성 설정 완료</color>");
+        }
+
+
+ 
+
         #region 초기화 및 설정
         /// <summary>
         /// 물리 및 콜라이더 설정 초기화
@@ -161,51 +259,34 @@ namespace Unity.Assets.Scripts.Objects
         #endregion
         
         #region 공통 기능 메서드 (Rigidbody 직접 사용)
-        /// <summary>
-        /// 객체에 힘 적용 (rb 직접 사용)
-        /// </summary>
+  
         public virtual void ApplyForce(Vector2 force, ForceMode2D forceMode = ForceMode2D.Force)
         {
             if (rb == null) return;
 
-            // 권한 확인 후 물리 적용 메서드 호출
-            if (HasAuthorityToModifyPhysics())
-            {
-                ApplyPhysicsForce(force, forceMode);
-            }
+            ApplyPhysicsForce(force, forceMode);
+
         }
-        
-        /// <summary>
-        /// 객체에 토크 적용 (rb 직접 사용)
-        /// </summary>
+     
         public virtual void ApplyTorque(float torque, ForceMode2D forceMode = ForceMode2D.Force)
         {
              if (rb == null) return;
 
-            // 권한 확인 후 물리 적용 메서드 호출
-            if (HasAuthorityToModifyPhysics())
-            {
-                 ApplyPhysicsTorque(torque, forceMode);
-            }
+            ApplyPhysicsTorque(torque, forceMode);
+
         }
         
-        /// <summary>
-        /// 객체 발사 (rb 직접 사용)
-        /// </summary>
+    
         public virtual void Launch(Vector2 direction, float force, ForceMode2D forceMode = ForceMode2D.Impulse)
         {
              if (rb == null) return;
 
             // 권한 확인 후 물리 적용 메서드 호출
-            if (HasAuthorityToModifyPhysics())
-            {
-                 PerformPhysicsLaunch(direction, force, forceMode);
-            }
+             PerformPhysicsLaunch(direction, force, forceMode);
+
         }
         
-        /// <summary>
-        /// 객체 이동 (Kinematic Body 또는 Transform 직접 제어 - rb 직접 사용)
-        /// </summary>
+
         public virtual void Move(Vector3 position)
         {
             if (rb != null && rb.isKinematic) // rb 직접 사용
@@ -215,13 +296,10 @@ namespace Unity.Assets.Scripts.Objects
             else
             {
                 transform.position = position;
-                 // if (IsServer) transform.position = position;
             }
         }
         
-        /// <summary>
-        /// 객체 회전 (Kinematic Body 또는 Transform 직접 제어 - rb 직접 사용)
-        /// </summary>
+
         public virtual void Rotate(float zRotation)
         {
              if (rb != null && rb.isKinematic) // rb 직접 사용
@@ -231,13 +309,10 @@ namespace Unity.Assets.Scripts.Objects
             else
             {
                 transform.rotation = Quaternion.Euler(0, 0, zRotation);
-                // if (IsServer) transform.rotation = Quaternion.Euler(0, 0, zRotation);
             }
         }
         
-        /// <summary>
-        /// 객체 가시성 설정
-        /// </summary>
+ 
         public virtual void SetVisibility(bool visible)
         {
             if (objectRenderer != null)
@@ -246,10 +321,7 @@ namespace Unity.Assets.Scripts.Objects
                 isVisible = visible;
             }
         }
-        
-        /// <summary>
-        /// 객체 이동 가능 여부 설정 (Kinematic 설정 사용 - rb 직접 사용)
-        /// </summary>
+
         public virtual void SetMovable(bool movable)
         {
              if (rb != null)
@@ -264,9 +336,7 @@ namespace Unity.Assets.Scripts.Objects
             }
         }
         
-        /// <summary>
-        /// 객체 위치 설정 (보간 사용)
-        /// </summary>
+
         public virtual void MoveToPosition(Vector3 targetPosition, float speed)
         {
             if (Vector3.Distance(transform.position, targetPosition) < 0.01f)
@@ -292,18 +362,17 @@ namespace Unity.Assets.Scripts.Objects
         /// <summary>
         /// 이 객체의 물리 상태를 변경할 권한이 있는지 확인합니다. (서버 또는 스폰되지 않은 객체)
         /// </summary>
-        protected virtual bool HasAuthorityToModifyPhysics()
-        {
-            // 서버이거나 아직 네트워크에 스폰되지 않은 로컬 객체만 물리 상태를 변경할 수 있습니다.
-            return IsServer || !IsSpawned;
-        }
+        // protected virtual bool HasAuthorityToModifyPhysics()
+        // {
+        //     // 서버이거나 아직 네트워크에 스폰되지 않은 로컬 객체만 물리 상태를 변경할 수 있습니다.
+        //     return IsServer || !IsSpawned;
+        // }
 
         /// <summary>
         /// Rigidbody에 실제로 힘을 적용합니다. 권한 확인은 호출하는 쪽에서 수행해야 합니다.
         /// </summary>
         protected virtual void ApplyPhysicsForce(Vector2 force, ForceMode2D forceMode)
         {
-            // rb는 null이 아님이 보장되어야 함 (호출 전에 확인됨)
             rb.AddForce(force, forceMode);
         }
 
@@ -312,7 +381,6 @@ namespace Unity.Assets.Scripts.Objects
         /// </summary>
         protected virtual void ApplyPhysicsTorque(float torque, ForceMode2D forceMode)
         {
-            // rb는 null이 아님이 보장되어야 함 (호출 전에 확인됨)
             rb.AddTorque(torque, forceMode);
         }
 
@@ -420,19 +488,14 @@ namespace Unity.Assets.Scripts.Objects
         protected virtual void OnCollisionEnter2D(Collision2D collision)
         {
             // 충돌 처리는 서버 또는 스폰되지 않은 경우에만 위임
-            if (IsServer || !IsSpawned)
-            {
-                 HandleCollision(collision);
-            }
+            HandleCollision(collision);
+
         }
         
         protected virtual void OnTriggerEnter2D(Collider2D other)
         {
             // 트리거 처리는 서버 또는 스폰되지 않은 경우에만 위임
-             if (IsServer || !IsSpawned)
-            {
-                HandleTrigger(other);
-            }
+            HandleTrigger(other);
         }
         
         protected virtual void HandleCollision(Collision2D collision){}
@@ -447,18 +510,55 @@ namespace Unity.Assets.Scripts.Objects
         /// </summary>
         protected virtual void UpdateStuckDetection()
         {
+            // 타이머 증가
             stuckCheckTimer += Time.fixedDeltaTime;
+            
+            // 주기적 검사 (3초마다)
             if (stuckCheckTimer >= stuckCheckInterval)
             {
                 stuckCheckTimer = 0f; // 타이머 리셋
-
-                // Rigidbody 속도의 제곱 크기가 임계값보다 작으면 Stuck 상태로 간주
+                
+                // STUCK 패턴 감지
+                bool isStuck = false;
+                string stuckReason = "";
+                
+                // 1. 속도가 너무 낮은 경우 (기존 방식)
                 if (rb.linearVelocity.sqrMagnitude < stuckVelocityThresholdSqr)
                 {
-                     #if UNITY_EDITOR || DEVELOPMENT_BUILD
-                     Debug.LogWarning($"[{gameObject.name}] Stuck detected! Velocity magnitude: {rb.linearVelocity.magnitude:F3}");
-                     #endif
-                    OnStuck(); // Stuck 상태 처리 메서드 호출
+                    isStuck = true;
+                    stuckReason = "낮은 속도";
+                }
+                
+                // 2. 이전 위치와 현재 위치가 거의 같은 경우 (이동이 거의 없음)
+                else if (Vector3.Distance(transform.position, previousPosition) < 0.05f)
+                {
+                    isStuck = true;
+                    stuckReason = "위치 변화 없음";
+                }
+                
+                // 3. Y축 속도는 있지만 X축 속도가 거의 없는 경우 (떠다니는 상태)
+                else if (Mathf.Abs(rb.linearVelocity.y) > 1f && Mathf.Abs(rb.linearVelocity.x) < 0.3f)
+                {
+                    isStuck = true;
+                    stuckReason = "Y축으로만 움직임 (떠다님)";
+                }
+                
+                // 4. X축 속도는 있지만 Y축 속도가 거의 없는 경우 (좌우로만 움직임)
+                else if (Mathf.Abs(rb.linearVelocity.x) > 1f && Mathf.Abs(rb.linearVelocity.y) < 0.3f)
+                {
+                    isStuck = true;
+                    stuckReason = "X축으로만 움직임 (수평 갇힘)";
+                }
+                
+                // Stuck으로 판정된 경우 처리
+                if (isStuck)
+                {
+                    #if UNITY_EDITOR || DEVELOPMENT_BUILD
+                    Debug.LogWarning($"[{gameObject.name}] Stuck 감지됨! 원인: {stuckReason}, 속도: {rb.linearVelocity}, 위치 변화: {Vector3.Distance(transform.position, previousPosition):F3}");
+                    #endif
+                    
+                    // Stuck 상태 처리 메서드 호출
+                    OnStuck();
                 }
             }
         }

@@ -37,17 +37,7 @@ public class GameStateNetworkHandler : NetworkBehaviour
     /// <summary>
     /// 웨이브 변경을 클라이언트에 전달
     /// </summary>
-    [ClientRpc]
-    public void WaveChangedClientRpc(int wave, float timer, bool isBossWave)
-    {
-        if (!_isInitialized)
-        {
-            Debug.LogError("[GameStateNetworkHandler] 초기화되지 않은 상태에서 WaveChangedClientRpc 호출됨");
-            return;
-        }
-        
-        _gameState.UpdateClientWave(wave, timer, isBossWave);
-    }
+
     
     /// <summary>
     /// 돈 업데이트를 클라이언트에 전달

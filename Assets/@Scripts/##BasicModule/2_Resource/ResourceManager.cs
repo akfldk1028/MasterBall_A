@@ -269,46 +269,12 @@ namespace Unity.Assets.Scripts.Resource
         // 디버그용 메서드: 로드된 모든 에셋 출력
         public void Clear()
         {
-            _debugClassFacade?.LogInfo(GetType().Name, $"[ResourceManager] Clear 시작: {_resources.Count}개 리소스, {_handles.Count}개 핸들");
-            
-            // ScriptableObject 초기화
-            
-            // 핸들 해제
-            int releasedCount = 0;
-            int errorCount = 0;
-            
-            foreach (var handleEntry in _handles)
-            {
-                try
-                {
-                    string key = handleEntry.Key;
-                    AsyncOperationHandle handle = handleEntry.Value;
-                    
-                    // 유효한 핸들인지 확인
-                    if (handle.IsValid())
-                    {
-                        Addressables.Release(handle);
-                        releasedCount++;
-                    }
-                    else
-                    {
-                        _debugClassFacade?.LogWarning(GetType().Name, $"[ResourceManager] 유효하지 않은 핸들 무시: {key}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _debugClassFacade?.LogWarning(GetType().Name, $"[ResourceManager] 핸들 해제 중 오류 발생: {ex.Message}");
-                    errorCount++;
-                }
-            }
-            
-            _debugClassFacade?.LogInfo(GetType().Name, $"[ResourceManager] 핸들 해제 완료: 성공 {releasedCount}개, 오류 {errorCount}개");
-            
-            // 컬렉션 초기화
             _resources.Clear();
+
+            foreach (var handle in _handles)
+                Addressables.Release(handle);
+
             _handles.Clear();
-            
-            _debugClassFacade?.LogInfo(GetType().Name, "[ResourceManager] Clear 완료");
         }
         
 
