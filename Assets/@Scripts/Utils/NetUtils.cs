@@ -64,9 +64,15 @@ public class NetUtils
         return NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out spawnedObject);
     }
 
-    public bool IsClientCheck(ulong clientId)
+    public static bool IsClientCheck(ulong clientId)
     {
         if (LocalID() == clientId) return true;
+        return false;
+    }
+
+    public bool IsClientCheck_P(ulong clientId)
+    {
+        if (_networkManager.LocalClientId == clientId) return true;
         return false;
     }
 // NetUtils 클래스에 추가

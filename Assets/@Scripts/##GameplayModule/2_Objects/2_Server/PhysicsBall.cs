@@ -54,7 +54,7 @@ namespace Unity.Assets.Scripts.Objects
         // Properties
         public static int SharedPower => currentPower;
         public static float SharedPowerTimer => powerTimer;
-        public int AttackPower => currentPower;
+        public int AttackPower { get; private set; } = 1;
         
         // State
         private EBallState _currentState = EBallState.None;

@@ -123,11 +123,18 @@ namespace Unity.Assets.Scripts.Objects
             // 체력이 0이 되면 벽돌 파괴
             if (wave <= 0)
             {
-                // 원래 wave 값에 따른 점수 추가
-                if (gameManager != null)
+                // --- PlayerController를 통해 로컬 점수 추가 (수정됨) ---
+                PlayerController localPlayerController = FindObjectOfType<PlayerController>(); // 씬에서 로컬 PlayerController 찾기
+                if (localPlayerController != null)
                 {
-                    gameManager.AddScore(originalWave);
+                    localPlayerController.AddLocalScore(originalWave); // 찾은 PlayerController의 메서드 호출
+                    Debug.Log($"[{nameof(Brick)}] 로컬 점수 추가: {originalWave}");
                 }
+                else
+                {
+                    Debug.LogError($"[{nameof(Brick)}] 씬에서 PlayerController를 찾을 수 없습니다! 점수가 추가되지 않습니다.");
+                }
+                // ---------------------------------------------------
                 
                 HandleBrickDestruction();
                 Destroy(gameObject);
